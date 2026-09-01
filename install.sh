@@ -58,6 +58,7 @@ if [ -x /opt/homebrew/bin/brew ]; then
   eval "$(/opt/homebrew/bin/brew shellenv)"
 else
   echo "==> [2/4] Installing Homebrew (it will ask for your password)"
+  sudo -v # One sudo prompt up front, with a reason, beats several mid-run.
   NONINTERACTIVE=1 /bin/bash -c \
     "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   eval "$(/opt/homebrew/bin/brew shellenv)"
