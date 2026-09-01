@@ -45,6 +45,9 @@ fs_backup_used() { [[ -n $__DOT_BACKUP_DIR ]]; }
 fs_pairs() {
   local dir=$1 home="$1/home" src rel
   [[ -d $home ]] || return 0
+  # -print0 and `read -d ''` separate paths with a zero byte instead of a
+  # newline -- the one character a filename cannot contain. See
+  # docs/bash-guide.md.
   while IFS= read -r -d '' src; do
     rel=${src#"$home"/}
     printf '%s\t%s\n' "$src" "$HOME/$rel"

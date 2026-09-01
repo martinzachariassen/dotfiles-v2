@@ -3,6 +3,9 @@
 # The single entrypoint for shared code. Everything -- bin/dot, every module
 # apply.sh and doctor.sh, every test -- sources this one file and gets the
 # whole library. There is no partial import.
+#
+# New to bash? docs/bash-guide.md explains every idiom used in this directory,
+# one at a time. Comments in these files explain decisions, not syntax.
 
 [[ -n ${__DOT_SH:-} ]] && return 0
 __DOT_SH=1

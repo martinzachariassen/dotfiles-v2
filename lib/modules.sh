@@ -50,13 +50,14 @@ module_setting_bool() {
 # good as any, and it makes two runs read identically. There was an `order`
 # field once; every module set it to 50.
 #
-# Silent by design. A single run asks several times -- the sudo check, the
-# apply loop, the orphan scan -- and every caller reads it as
-# `< <(modules_enabled)`, which is a subshell. Warning from in here therefore
-# printed once per caller, and no amount of caching fixes that: a variable set
-# inside a process substitution never reaches the parent. Reporting is
-# modules_warn_unknown's job, called once, from the one place that knows a run
-# has started.
+# Silent by design, and it cannot be otherwise. A single run asks several times
+# -- the sudo check, the apply loop, the orphan scan -- and every caller reads
+# it as `< <(modules_enabled)`, which is a subshell (see docs/bash-guide.md).
+# So a warning printed in here appears once per caller, and no amount of
+# caching fixes that: a variable set inside a subshell never reaches the
+# parent. Complaining about unknown names is modules_require_known's job,
+# called once, from the one place that knows a run has started.
+#
 # `if` rather than `&&`: with pipefail, a trailing `&&` whose test fails leaves
 # the loop at status 1, which propagates out of the pipeline and kills any
 # caller doing `x=$(modules_enabled)` under `set -e`. It only takes one unknown
