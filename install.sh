@@ -34,12 +34,14 @@ echo
 # --- 1. Xcode Command Line Tools --------------------------------------------
 # Homebrew needs a compiler and git. The GUI installer runs asynchronously, so
 # trigger it and wait rather than racing it.
-if ! xcode-select -p >/dev/null 2>&1; then
+if xcode-select -p >/dev/null 2>&1; then
+  echo "==> [1/4] Xcode Command Line Tools already installed"
+else
   echo "==> [1/4] Installing Xcode Command Line Tools (click Install in the dialog)"
   xcode-select --install >/dev/null 2>&1 || true
 
   attempts=0
-  max_attempts=180  # 180 * 10s = 30 minutes
+  max_attempts=180 # 180 * 10s = 30 minutes
   until xcode-select -p >/dev/null 2>&1; do
     attempts=$((attempts + 1))
     if [ "$attempts" -ge "$max_attempts" ]; then
@@ -83,4 +85,16 @@ fi
 # Phase 1 (core packages) installs `dasel` and `fzf`; phase 2 asks what you want and applies it.
 echo "==> [4/4] Handing off to dot apply"
 echo
-exec bash "$REPO_DIR/bin/dot" apply < /dev/tty
+
+# Under `curl | bash` this script's stdin is the pipe, not the keyboard, so the
+# wizard is handed the terminal explicitly. Checked first: without a
+# controlling terminal the redirect fails with a bare "No such device or
+# address", which says nothing about what to do next.
+if [ ! -r /dev/tty ]; then
+  echo "No terminal available, so the setup wizard cannot ask anything." >&2
+  echo "Run this instead, from a terminal:" >&2
+  echo "  $REPO_DIR/bin/dot apply" >&2
+  exit 1
+fi
+
+exec bash "$REPO_DIR/bin/dot" apply </dev/tty

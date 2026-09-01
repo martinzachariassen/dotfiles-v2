@@ -50,6 +50,27 @@ signingkey = "ssh-ed25519 AAAA..."
 
 Then `dot apply`.
 
+`dot apply` validates `enabled` before it touches anything: a name with no
+matching module stops the run and prints the list of real ones. Editing this
+file by hand is a supported workflow, so a typo has to be an error -- the
+alternative is a run that reports success having installed three modules out
+of four.
+
+### Profiles
+
+`dot config --init` offers the profiles in `profiles.toml` as starting points
+for the checklist, plus **`none`**. Picking `none` skips the picker and writes
+an empty list, on the assumption you would rather fill it in yourself:
+
+```toml
+[modules]
+enabled = []
+```
+
+There is no "custom" profile. Hand-assembling a module list is what the config
+file is for, and two ways to do the same thing is one too many. Profiles are
+only ever a first-run convenience -- `dot apply` never reads `profiles.toml`.
+
 ## Modules
 
 A module is a directory. **The directory listing is the registry** -- there is
@@ -59,7 +80,7 @@ contract, which is what makes that safe.
 
 ```
 modules/<name>/
-├── module.toml     required   description, default, order, sudo
+├── module.toml     required   description, order, sudo
 ├── Brewfile        optional   packages for this module
 ├── home/           optional   mirrors $HOME literally; leaf files are symlinked
 ├── apply.sh        optional   imperative, idempotent, run in its own process
@@ -120,3 +141,28 @@ shfmt -d -i 2 -ci lib/*.sh bin/dot
 Shipped shell code is capped at **1500 lines** and CI enforces it. Test code is
 uncapped -- `lib/fs.sh` moves files in `$HOME`, so it earns every test it has.
 Going over the cap is a signal to cut something, not to raise it.
+
+### When something breaks
+
+A crash prints one line -- the file, the command and the status -- whether it
+happened in `dot` or inside a module hook run as its own process:
+
+```
+✗ modules/macos-defaults/apply.sh: defaults write com.apple.dock autohide -bool true (exit 1)
+```
+
+There is no line number on purpose: for a failure inside a function bash 3.2
+reports the function's *definition* line, and a confidently wrong number is
+worse than none. When one line is not enough, hooks are ordinary scripts:
+
+```sh
+bash -x modules/git/apply.sh
+```
+
+### Bash 3.2
+
+macOS ships bash **3.2.57** (2007) and this repo installs no other bash, so
+every `#!/usr/bin/env bash` here resolves to it. That rules out associative
+arrays (`declare -A`), `mapfile`/`readarray`, `${x,,}` and `BASHPID`. A test in
+`tests/dot.bats` greps the shipped code for these, because the last one to slip
+through failed only at runtime, on a path no test covered.

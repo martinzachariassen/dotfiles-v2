@@ -52,7 +52,6 @@ fs_pairs() {
     rel=${src#"$home"/}
     printf '%s\t%s\n' "$src" "$HOME/$rel"
   done < <(find "$home" -type f -print0 | sort -z)
-  unset dir
 }
 
 # fs_classify SRC DST -- one word describing what is at DST right now.
@@ -91,44 +90,39 @@ fs_link() {
   local src=$1 dst=$2 rel=${2#"$HOME"/} state backup
 
   state=$(fs_classify "$src" "$dst")
+
+  # Already correct: the common case on a re-run, and the only one that both
+  # prints nothing and returns early.
+  if [[ $state == ok ]]; then
+    DOT_N_UNCHANGED=$((DOT_N_UNCHANGED + 1))
+    return 0
+  fi
+
+  # Announce the intent first, so a dry run and a real run describe the change
+  # in exactly the same words -- the report cannot drift from the action.
   case $state in
-    ok)
-      DOT_N_UNCHANGED=$((DOT_N_UNCHANGED + 1))
-      return 0
-      ;;
-    missing)
-      if [[ $DOT_DRY_RUN == 1 ]]; then
-        info "link    ~/$rel"
-      else
-        mkdir -p "$(dirname "$dst")"
-        ln -s "$src" "$dst"
-      fi
-      DOT_N_LINKED=$((DOT_N_LINKED + 1))
-      ;;
-    wrong-target | broken)
-      # A symlink carries no data, so replacing one needs no backup.
-      if [[ $DOT_DRY_RUN == 1 ]]; then
-        info "relink  ~/$rel"
-      else
-        mkdir -p "$(dirname "$dst")"
-        rm -f "$dst"
-        ln -s "$src" "$dst"
-      fi
-      DOT_N_RELINKED=$((DOT_N_RELINKED + 1))
-      ;;
-    clobbered)
-      # A real file: move it aside, never overwrite it.
-      if [[ $DOT_DRY_RUN == 1 ]]; then
-        info "backup  ~/$rel  (real file in the way)"
-      else
-        backup="$(fs_backup_dir)/$rel"
-        mkdir -p "$(dirname "$backup")"
-        mv "$dst" "$backup"
-        mkdir -p "$(dirname "$dst")"
-        ln -s "$src" "$dst"
-      fi
-      DOT_N_BACKED_UP=$((DOT_N_BACKED_UP + 1))
-      ;;
+    missing) info "link    ~/$rel" ;;
+    wrong-target | broken) info "relink  ~/$rel" ;;
+    clobbered) info "backup  ~/$rel  (real file in the way)" ;;
+  esac
+  [[ $DOT_DRY_RUN == 1 ]] || {
+    # A real file is moved aside; a symlink carries no data, so replacing one
+    # needs no backup. Either way the link is created the same way afterwards.
+    if [[ $state == clobbered ]]; then
+      backup="$(fs_backup_dir)/$rel"
+      mkdir -p "$(dirname "$backup")"
+      mv "$dst" "$backup"
+    else
+      rm -f "$dst"
+    fi
+    mkdir -p "$(dirname "$dst")"
+    ln -s "$src" "$dst"
+  }
+
+  case $state in
+    missing) DOT_N_LINKED=$((DOT_N_LINKED + 1)) ;;
+    wrong-target | broken) DOT_N_RELINKED=$((DOT_N_RELINKED + 1)) ;;
+    clobbered) DOT_N_BACKED_UP=$((DOT_N_BACKED_UP + 1)) ;;
   esac
 }
 
@@ -161,7 +155,7 @@ fs_check_tree() {
 
 # fs_report -- the closing summary of a `dot apply`.
 fs_report() {
-  local parts=()
+  local parts=() summary
   ((DOT_N_LINKED)) && parts+=("$DOT_N_LINKED linked")
   ((DOT_N_RELINKED)) && parts+=("$DOT_N_RELINKED relinked")
   ((DOT_N_BACKED_UP)) && parts+=("$DOT_N_BACKED_UP backed up")
@@ -170,10 +164,10 @@ fs_report() {
   if [[ ${#parts[@]} -eq 0 ]]; then
     say "No files to link."
   else
-    say "$(
-      IFS=', '
-      printf '%s' "${parts[*]}"
-    )"
+    # Joined with printf rather than IFS + "${parts[*]}": that form uses only
+    # the FIRST character of IFS, so `IFS=', '` produced "3 linked,3 backed up".
+    summary=$(printf ', %s' "${parts[@]}")
+    say "${summary:2}"
   fi
 
   if fs_backup_used; then
@@ -190,31 +184,34 @@ fs_report() {
 # is bounded to directories some module's home/ actually declares, which keeps
 # it fast and stops it from walking all of $HOME.
 fs_orphans() {
-  local -a expected=() roots=()
-  local dir src dst link target seen
+  # Two newline-delimited sets, tested with `grep -qxF`. An associative array
+  # would read better, but macOS ships bash 3.2, which does not have them --
+  # and a `local -A` here fails at runtime on the only OS this repo supports.
+  local claimed='' roots=''
+  local dir src dst link target
 
-  for dir in $(modules_enabled_dirs) "$DOT_ROOT/core"; do
+  # Unquoted $(...) here used to word-split the module paths, so a repo cloned
+  # to a directory with a space in it scanned the wrong places.
+  while IFS= read -r dir; do
     while IFS=$'\t' read -r src dst; do
-      expected+=("$dst")
-      roots+=("$(dirname "$dst")")
+      claimed+="$dst"$'\n'
+      roots+="$(dirname "$dst")"$'\n'
     done < <(fs_pairs "$dir")
-  done
+  done < <(
+    modules_enabled_dirs
+    printf '%s\n' "$DOT_ROOT/core"
+  )
 
-  [[ ${#roots[@]} -eq 0 ]] && return 0
+  [[ -z $roots ]] && return 0
 
+  # Bounded to directories some module actually declares, so this never walks
+  # the whole of $HOME.
   while IFS= read -r dir; do
     [[ -d $dir ]] || continue
     while IFS= read -r -d '' link; do
       target=$(readlink "$link") || continue
       [[ $target == "$DOT_ROOT"/* ]] || continue
-      seen=0
-      for dst in "${expected[@]}"; do
-        [[ $link == "$dst" ]] && {
-          seen=1
-          break
-        }
-      done
-      ((seen)) || printf '%s\n' "$link"
+      grep -qxF -- "$link" <<<"$claimed" || printf '%s\n' "$link"
     done < <(find "$dir" -maxdepth 1 -type l -print0 2>/dev/null)
-  done < <(printf '%s\n' "${roots[@]}" | sort -u)
+  done < <(printf '%s' "$roots" | sort -u)
 }

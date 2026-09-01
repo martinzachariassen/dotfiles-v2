@@ -47,6 +47,38 @@ source "$DOT_ROOT/lib/brew.sh"
 source "$DOT_ROOT/lib/modules.sh"
 source "$DOT_ROOT/lib/wizard.sh"
 
+# --- Failure reporting -----------------------------------------------------
+#
+# A module hook runs in its own bash process, so without this a crash is an
+# exit code and nothing else. One line: file, command, status. For more,
+# hooks are ordinary scripts -- `bash -x modules/git/apply.sh`.
+#
+# No line number: for a failure inside a function bash 3.2 reports the
+# function's DEFINITION line, not the failing one, and a wrong number costs
+# more than no number.
+__DOT_REPORTED=0
+__dot_on_err() {
+  # All three captured first: the guards below are themselves commands, and
+  # running them overwrites BASH_COMMAND.
+  local status=$? cmd=$BASH_COMMAND src=${BASH_SOURCE[1]}
+  # errtrace fires this inside $( ) too, where toml_get probes for a missing
+  # key -- without this every config default reported a failure.
+  ((BASH_SUBSHELL == 0)) || return 0
+  # The trap fires again at each frame as the stack unwinds.
+  ((__DOT_REPORTED)) && return 0
+  __DOT_REPORTED=1
+  printf '  %s✗ %s: %s (exit %s)%s\n' \
+    "$__C_RED" "${src#"$DOT_ROOT"/}" "$cmd" "$status" "$__C_RESET" >&2
+  return 0
+}
+
+# Not for a shell that already has an ERR trap: bats installs one, and stomping
+# on it made the runner report this instead of the failing assertion.
+if [[ -z $(trap -p ERR) ]]; then
+  set -o errtrace
+  trap __dot_on_err ERR
+fi
+
 # --- Exit status -----------------------------------------------------------
 #
 # `fail` bumps DOT_FAILURES rather than exiting, so a doctor run reports every

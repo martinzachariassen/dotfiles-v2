@@ -25,10 +25,9 @@ modules_all() {
 
 module_exists() { [[ -f $(module_manifest "$1") ]]; }
 
-# --- Manifest fields (the four that exist; a fifth needs justifying) --------
+# --- Manifest fields (the three that exist; a fourth needs justifying) ------
 module_desc() { toml_get "$(module_manifest "$1")" 'description' "$1"; }
 module_order() { toml_get "$(module_manifest "$1")" 'order' '50'; }
-module_default() { [[ $(toml_get "$(module_manifest "$1")" 'default' 'false') == true ]]; }
 module_sudo() { [[ $(toml_get "$(module_manifest "$1")" 'sudo' 'false') == true ]]; }
 
 # module_setting NAME KEY [DEFAULT] -- read [settings.<name>].<key> from the
@@ -61,17 +60,49 @@ modules_sort() {
 }
 
 # Modules the config asks for, minus any that no longer exist in the repo.
-# A stale name is a warning, not a hard error: deleting a module from the repo
-# should not brick every machine that still lists it.
+#
+# Silent by design. A single run asks several times -- the sudo check, the
+# apply loop, the orphan scan -- and every caller reads it as
+# `< <(modules_enabled)`, which is a subshell. Warning from in here therefore
+# printed once per caller, and no amount of caching fixes that: a variable set
+# inside a process substitution never reaches the parent. Reporting is
+# modules_warn_unknown's job, called once, from the one place that knows a run
+# has started.
+# `if` rather than `&&`: with pipefail, a trailing `&&` whose test fails leaves
+# the loop at status 1, which propagates out of the pipeline and kills any
+# caller doing `x=$(modules_enabled)` under `set -e`. It only takes one unknown
+# name sorting last to trigger it.
 modules_enabled() {
   local name
   while IFS= read -r name; do
-    if module_exists "$name"; then
-      printf '%s\n' "$name"
-    else
-      warn "config lists unknown module '$name' -- ignoring"
-    fi
+    if module_exists "$name"; then printf '%s\n' "$name"; fi
   done < <(cfg_list 'modules.enabled') | modules_sort
+}
+
+# Names the config lists that the repo has no module for -- typos, or modules
+# deleted from the repo since the config was written.
+modules_unknown() {
+  local name
+  while IFS= read -r name; do
+    if ! module_exists "$name"; then printf '%s\n' "$name"; fi
+  done < <(cfg_list 'modules.enabled')
+}
+
+# Refuse to apply a config that names something that does not exist.
+#
+# Hand-editing config.toml is a supported workflow -- the `none` profile exists
+# precisely so you can -- so a typo there is likely, and the failure mode of
+# merely warning is the worst one available: `dot apply` reports success having
+# quietly installed three modules out of four. Stopping costs one edit.
+# `dot doctor` still reports rather than dies; it is the read-only verb.
+modules_require_known() {
+  local unknown available
+  unknown=$(modules_unknown | tr '\n' ' ')
+  [[ -z ${unknown// /} ]] && return 0
+  available=$(modules_all | tr '\n' ' ')
+  die "config lists module(s) that do not exist: ${unknown% }
+    available:  ${available% }
+    edit:       $DOT_CONFIG"
 }
 
 modules_enabled_dirs() {

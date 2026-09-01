@@ -19,11 +19,11 @@ teardown() { teardown_sandbox; }
   [ "${#lines[@]}" -gt 0 ]
 }
 
-@test "every module has a parseable manifest with all four fields" {
+@test "every module has a parseable manifest with all three fields" {
   local name manifest
   while IFS= read -r name; do
     manifest="$DOT_ROOT/modules/$name/module.toml"
-    for field in description default order sudo; do
+    for field in description order sudo; do
       run dasel -i toml -o json "$field" <"$manifest"
       [ "$status" -eq 0 ] || {
         echo "module '$name' is missing field '$field'"
@@ -43,20 +43,15 @@ teardown() { teardown_sandbox; }
   done < <(modules_all)
 }
 
-@test "order is an integer and default/sudo are booleans" {
-  local name order dflt sdo
+@test "order is an integer and sudo is a boolean" {
+  local name order sdo
   while IFS= read -r name; do
     order=$(module_order "$name")
     [[ $order =~ ^[0-9]+$ ]] || {
       echo "$name: order '$order' is not an integer"
       return 1
     }
-    dflt=$(toml_get "$(module_manifest "$name")" default)
     sdo=$(toml_get "$(module_manifest "$name")" sudo)
-    [[ $dflt == true || $dflt == false ]] || {
-      echo "$name: default must be a boolean"
-      return 1
-    }
     [[ $sdo == true || $sdo == false ]] || {
       echo "$name: sudo must be a boolean"
       return 1
@@ -64,13 +59,14 @@ teardown() { teardown_sandbox; }
   done < <(modules_all)
 }
 
-@test "manifests carry no fifth field" {
+@test "manifests carry no fourth field" {
   # Field creep is the most likely path back to v1's feature.sh. A new field
   # is allowed, but only deliberately -- which means editing this test.
+  # `default` was removed once its only reader, the `custom` profile, went.
   local name keys
   while IFS= read -r name; do
     keys=$(dasel -i toml -o yaml 'keys()' <"$(module_manifest "$name")" | sed 's/^- //' | sort | tr '\n' ' ')
-    [ "$keys" = "default description order sudo " ] || {
+    [ "$keys" = "description order sudo " ] || {
       echo "$name has unexpected manifest fields: $keys"
       return 1
     }

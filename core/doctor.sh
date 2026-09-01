@@ -48,17 +48,7 @@ else
   fail "config      missing (run: dot config --init)"
 fi
 
-# --- The repo is where the config thinks it is ------------------------------
-#
-# Not used for path resolution -- DOT_ROOT is always derived from this file's
-# own location. This catches the case where you cloned the repo twice and are
-# editing one copy while a different one is linked into $HOME.
-declared=$(cfg_get 'core.repo' '')
-if [[ -n $declared && $declared != "$DOT_ROOT" ]]; then
-  fail "repo        config says $declared, running from $DOT_ROOT"
-else
-  ok "repo        $DOT_ROOT"
-fi
+ok "repo        $DOT_ROOT"
 
 # --- Uncommitted work -------------------------------------------------------
 if git -C "$DOT_ROOT" rev-parse --git-dir >/dev/null 2>&1; then

@@ -232,3 +232,27 @@ teardown() { teardown_sandbox; }
   run fs_pairs "$dir"
   [ -z "$output" ]
 }
+
+# --- fs_report --------------------------------------------------------------
+
+@test "report: several tallies are joined with a comma AND a space" {
+  # Regression: this was `IFS=', '; printf '%s' "${parts[*]}"`, and ${arr[*]}
+  # joins on only the FIRST character of IFS -- so the summary of a real run
+  # read "3 linked,3 backed up".
+  DOT_N_LINKED=3
+  DOT_N_BACKED_UP=2
+  run fs_report
+  [[ $output == *"3 linked, 2 backed up"* ]]
+}
+
+@test "report: a single tally gets no separator" {
+  DOT_N_LINKED=1
+  run fs_report
+  [[ $output == *"1 linked"* ]]
+  [[ $output != *","* ]]
+}
+
+@test "report: nothing done says so" {
+  run fs_report
+  [[ $output == *"No files to link."* ]]
+}

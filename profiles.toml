@@ -3,6 +3,11 @@
 # A profile is a starting point for the first-run checklist and NOTHING else.
 # `dot apply` never reads this file: the wizard turns your pick into an
 # explicit list in config.toml, and that list is what gets applied.
+#
+# The wizard also offers `none`, which is not listed here and cannot be: it
+# means "write an empty list and let me fill it in by hand". `dot apply`
+# validates whatever ends up in config.toml, so a typo is caught before any
+# work happens rather than silently skipped.
 
 [profiles]
 personal = ["git", "zsh", "dev-cli", "macos-defaults"]

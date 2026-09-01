@@ -19,8 +19,15 @@ if [[ $DOT_DRY_RUN == 1 ]]; then
 fi
 
 # --- Dock -------------------------------------------------------------------
-defaults write com.apple.dock autohide -bool \
-  "$(module_setting_bool macos-defaults dock_autohide true && echo true || echo false)"
+# Normalised to a literal true/false rather than passed through: `defaults`
+# rejects anything else, and doctor.sh compares against the same reading of
+# the setting, so the two can never disagree about what was asked for.
+if module_setting_bool macos-defaults dock_autohide true; then
+  dock_autohide=true
+else
+  dock_autohide=false
+fi
+defaults write com.apple.dock autohide -bool "$dock_autohide"
 defaults write com.apple.dock autohide-delay -float 0
 defaults write com.apple.dock show-recents -bool false
 defaults write com.apple.dock tilesize -int \

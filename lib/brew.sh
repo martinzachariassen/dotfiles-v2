@@ -17,8 +17,6 @@ brew_load() {
   return 1
 }
 
-brew_present() { brew_load 2>/dev/null; }
-
 # brew_bundle FILE [LABEL] -- install everything in a Brewfile.
 #
 # Missing file is success, not failure: a Brewfile is optional for a module,

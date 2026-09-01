@@ -8,12 +8,6 @@
 
 set -euo pipefail
 
-# Error reporting: show the command that failed, and where, rather than just
-# the exit code. This is especially useful for `dot apply` where a module hook
-# fails in a subshell and the exit code is all you get.
-set -o errtrace
-trap 'echo "dot: failed at ${BASH_SOURCE[0]}:${LINENO}: ${BASH_COMMAND}" >&2' ERR
-
 # shellcheck source=../lib/dot.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/dot.sh"
 
@@ -47,12 +41,17 @@ cmd_apply() {
   # Config. Generated on first run, read silently ever after -- a tool that
   # re-asks a settled question feels broken.
   if ! cfg_exists; then
-    if [[ -t 0 ]]; then
-      wizard_run
-    else
+    [[ -t 0 ]] ||
       die "No config at $DOT_CONFIG and no terminal to ask. Run: dot config --init"
-    fi
+    command -v fzf >/dev/null ||
+      die 'fzf is missing -- phase 1 did not complete. Check the brew output above.'
+    wizard_run
   fi
+
+  # Validated here, once, before anything is touched. modules_enabled cannot
+  # report this itself: every caller reads it as `< <(modules_enabled)`, and
+  # each of those subshells printed its own copy of the complaint.
+  modules_require_known
 
   heading 'Core files'
   fs_link_tree "$DOT_ROOT/core"
@@ -65,11 +64,19 @@ cmd_apply() {
     sudo -v
   fi
 
-  local name
+  local name count=0
   while IFS= read -r name; do
     heading "Module: $name"
     module_apply "$name"
+    count=$((count + 1))
   done < <(modules_enabled)
+
+  # The expected state after choosing the `none` profile, so say what to do
+  # next rather than silently applying core and stopping.
+  if ((count == 0)); then
+    heading 'Modules'
+    say "None enabled. List them under [modules] in $DOT_CONFIG."
+  fi
 
   heading 'Summary'
   fs_report
@@ -95,6 +102,13 @@ cmd_doctor() {
   cfg_exists || die "No config at $DOT_CONFIG. Run: dot config --init"
 
   heading 'Core'
+  # `fail`, not `warn`: this is exactly what will stop the next `dot apply`,
+  # and doctor exists to predict that rather than to shrug at it.
+  local unknown
+  while IFS= read -r unknown; do
+    fail "config lists unknown module '$unknown' -- dot apply will refuse"
+  done < <(modules_unknown)
+
   bash "$DOT_ROOT/core/doctor.sh" || fail 'core checks failed'
   fs_check_tree "$DOT_ROOT/core" || true
 

@@ -21,7 +21,12 @@ check() {
   fi
 }
 
-want_autohide=$(module_setting_bool macos-defaults dock_autohide true && echo 1 || echo 0)
+# `defaults read` reports booleans as 1/0, so the setting is mapped to match.
+if module_setting_bool macos-defaults dock_autohide true; then
+  want_autohide=1
+else
+  want_autohide=0
+fi
 
 check com.apple.dock autohide "$want_autohide" 'dock autohide'
 check com.apple.dock show-recents 0 'dock hides recents'
