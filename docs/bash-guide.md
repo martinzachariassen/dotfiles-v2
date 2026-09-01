@@ -8,16 +8,16 @@ Read it top to bottom once, or jump to whatever line is confusing you.
 
 - [The header every script starts with](#the-header-every-script-starts-with)
 - [Variables and quoting](#variables-and-quoting)
-- [Trimming strings with `${...}`](#trimming-strings-with-)
-- [Tests: `[[ ... ]]` and `(( ... ))`](#tests---and---)
-- [Exit status, `&&`, `||` and `$?`](#exit-status----and-)
+- [Trimming strings](#trimming-strings)
+- [Tests for strings, tests for numbers](#tests-for-strings-tests-for-numbers)
+- [Exit status: 0 means success](#exit-status-0-means-success)
 - [Reading things line by line](#reading-things-line-by-line)
-- [`< <(...)`: the strangest thing here](#---the-strangest-thing-here)
+- [Process substitution: the strangest thing here](#process-substitution-the-strangest-thing-here)
 - [Arrays](#arrays)
 - [Associative arrays (hash maps)](#associative-arrays-hash-maps)
-- [Functions, `local`, and `"$@"`](#functions-local-and-)
+- [Functions, local, and arguments](#functions-local-and-arguments)
 - [Traps](#traps)
-- [Why `printf` and not `echo`](#why-printf-and-not-echo)
+- [Why printf and not echo](#why-printf-and-not-echo)
 - [Two landmines this repo has actually stepped on](#two-landmines-this-repo-has-actually-stepped-on)
 
 ---
@@ -50,7 +50,7 @@ The escape hatch, for when a command is *allowed* to fail:
 grep -q pattern file || true      # never mind if there is no match
 ```
 
-### `${x:-default}`
+### Defaults with `${x:-default}`
 
 `-u` makes an unset variable fatal, so anywhere a variable is genuinely
 optional you write the default inline:
@@ -77,7 +77,7 @@ This repo lives in `$HOME`, where paths with spaces are normal, so the rule is
 absolute. The one place quotes are optional is inside `[[ ... ]]`, which does
 not word-split -- you will see both there.
 
-## Trimming strings with `${...}`
+## Trimming strings
 
 Bash can cut a prefix or a suffix off a string without calling out to `sed`:
 
@@ -96,7 +96,7 @@ keyboard's number row and cuts the left, `%` is on the right and cuts the right.
 You will see these all over `lib/fs.sh`, mostly to turn an absolute path into a
 short one for display.
 
-## Tests: `[[ ... ]]` and `(( ... ))`
+## Tests for strings, tests for numbers
 
 Two kinds of test, and this repo keeps them apart on purpose:
 
@@ -133,7 +133,7 @@ text `pre*`.
 count=$(( count + 1 ))      # $(( )) with a $ produces a value
 ```
 
-## Exit status, `&&`, `||` and `$?`
+## Exit status: 0 means success
 
 Every command returns a number: **0 means success**, anything else is a
 failure. That is backwards from most languages and is the single most important
@@ -196,7 +196,7 @@ while IFS= read -r -d '' path; do
 done < <(find "$dir" -type f -print0)
 ```
 
-## `< <(...)`: the strangest thing here
+## Process substitution: the strangest thing here
 
 Two separate pieces of syntax that happen to sit next to each other.
 
@@ -260,7 +260,7 @@ function sorts them before printing.
 These need bash 4 or newer -- one of the reasons this repo installs bash 5
 rather than using the 3.2 that macOS ships.
 
-## Functions, `local`, and `"$@"`
+## Functions, local, and arguments
 
 ```bash
 greet() {
@@ -312,7 +312,7 @@ Inside an ERR trap, three arrays describe the call stack. `BASH_LINENO[0]` is
 the line that failed and `BASH_SOURCE[1]` is the file it is in -- index 1
 because index 0 is the trap handler itself.
 
-## Why `printf` and not `echo`
+## Why printf and not echo
 
 `echo` differs between shells and versions: whether it interprets `\n`, what it
 does with a leading `-e`, whether it adds a newline. `printf` is specified.
