@@ -6,6 +6,19 @@
 #   dot <command> [options]
 #
 
+# The repo targets bash 5. macOS still ships 3.2 (from 2007) as /bin/bash, and
+# `#!/usr/bin/env bash` picks whichever comes first on PATH -- so a shell that
+# has not sourced Homebrew's shellenv would start this script under 3.2 and hit
+# obscure syntax errors deep inside the library. Re-exec into the right one
+# instead of failing later.
+if ((BASH_VERSINFO[0] < 5)); then
+  if [[ -x /opt/homebrew/bin/bash ]]; then
+    exec /opt/homebrew/bin/bash "$0" "$@"
+  fi
+  echo "dot needs bash 5 or newer; this is $BASH_VERSION. Run: brew install bash" >&2
+  exit 1
+fi
+
 set -euo pipefail
 
 # shellcheck source=../lib/dot.sh
@@ -55,7 +68,9 @@ cmd_apply() {
 
   heading 'Core files'
   fs_link_tree "$DOT_ROOT/core"
-  bash "$DOT_ROOT/core/apply.sh"
+  # "$BASH" is this shell's own path, so a child script is guaranteed the same
+  # interpreter the driver is running under rather than whatever PATH resolves.
+  "$BASH" "$DOT_ROOT/core/apply.sh"
 
   # One sudo prompt up front, with a reason, beats several mid-run.
   if modules_want_sudo && [[ $DOT_DRY_RUN != 1 ]]; then
@@ -109,7 +124,7 @@ cmd_doctor() {
     fail "config lists unknown module '$unknown' -- dot apply will refuse"
   done < <(modules_unknown)
 
-  bash "$DOT_ROOT/core/doctor.sh" || fail 'core checks failed'
+  "$BASH" "$DOT_ROOT/core/doctor.sh" || fail 'core checks failed'
   fs_check_tree "$DOT_ROOT/core" || true
 
   local name

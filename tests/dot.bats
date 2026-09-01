@@ -136,20 +136,24 @@ as_hook() {
   [ "$(grep -c 'exit 1' <<<"$output")" -eq 1 ]
 }
 
-# --- Portability ------------------------------------------------------------
+# --- The bash version -------------------------------------------------------
 
-@test "shipped code uses no bash 4 features" {
-  # macOS ships bash 3.2.57 and this repo installs no other bash, so every
-  # `#!/usr/bin/env bash` resolves to it. Associative arrays, mapfile and
-  # ${x,,} all fail there. One shipped once because fs_orphans had no test.
-  local hits
-  hits=$(cat "$DOT_ROOT"/lib/*.sh "$DOT_ROOT"/core/*.sh "$DOT_ROOT"/bin/dot \
-    "$DOT_ROOT"/modules/*/*.sh "$DOT_ROOT"/install.sh |
-    grep -vE '^[[:space:]]*#' |
-    grep -nE 'declare -A|local -A|mapfile|readarray|\$\{[A-Za-z_]+(,,|\^\^)' || true)
-  [ -z "$hits" ] || {
-    echo "bash 4 only constructs found:"
-    echo "$hits"
-    false
-  }
+@test "bash: the suite itself runs under bash 5" {
+  # The repo targets bash 5: install.sh installs it, bin/dot re-execs into it,
+  # lib/dot.sh refuses to load without it. If bats runs under macOS's own 3.2
+  # instead, every other test here is exercising the wrong shell -- so say so
+  # loudly rather than leaving it to a syntax error somewhere unrelated.
+  [ "${BASH_VERSINFO[0]}" -ge 5 ]
+}
+
+@test "bash: the library refuses to load under an old bash" {
+  # /bin/bash is macOS's 3.2. The guard is what turns "syntax error near
+  # unexpected token" in a file you never opened into one actionable line.
+  [ -x /bin/bash ] || skip 'no /bin/bash on this machine'
+  /bin/bash -c '((BASH_VERSINFO[0] < 5))' || skip '/bin/bash is already bash 5'
+
+  run /bin/bash -c "source '$DOT_ROOT/lib/dot.sh'"
+  [ "$status" -ne 0 ]
+  [[ $output == *"bash 5"* ]]
+  [[ $output == *"brew install bash"* ]]
 }

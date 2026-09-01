@@ -124,9 +124,11 @@ module_run_hook() {
   script="$(modules_dir "$name")/$hook"
   [[ -f $script ]] || return 0
 
+  # "$BASH" rather than bare `bash`: the hook then runs under the same
+  # interpreter as the driver, not whatever PATH happens to resolve to.
   DOT_MODULE=$name \
     DOT_MODULE_DIR="$(modules_dir "$name")" \
-    bash "$script"
+    "$BASH" "$script"
 }
 
 # module_apply NAME -- packages, then links, then imperative steps.

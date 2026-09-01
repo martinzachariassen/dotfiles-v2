@@ -7,6 +7,15 @@
 [[ -n ${__DOT_SH:-} ]] && return 0
 __DOT_SH=1
 
+# bin/dot re-execs itself into bash 5 before it gets here. This catches the
+# entry points that bypass it -- a hook run by hand, bats -- where the symptom
+# would otherwise be a syntax error in a file the reader did not open.
+if ((BASH_VERSINFO[0] < 5)); then
+  printf 'dotfiles needs bash 5 or newer; this is %s. Run: brew install bash\n' \
+    "$BASH_VERSION" >&2
+  exit 1
+fi
+
 # --- Repo root -------------------------------------------------------------
 #
 # An inherited DOT_ROOT always wins. That is the normal case: the shim at

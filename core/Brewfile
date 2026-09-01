@@ -10,6 +10,11 @@
 # machine. Everything else belongs to a module.
 
 # --- Required by the dotfiles machinery -------------------------------------
+# bash is the one package install.sh also installs directly, before phase 1:
+# every script here needs bash 5 and macOS ships 3.2, so `dot` cannot run at
+# all until it exists. It is listed anyway so `brew bundle` keeps it upgraded
+# and `brew bundle cleanup` never proposes removing it.
+brew "bash"      # 5.x; macOS ships 3.2 from 2007
 brew "dasel"     # reads config.toml and every module.toml
 brew "fzf"       # the first-run module picker
 brew "git"       # cloning and updating this repo

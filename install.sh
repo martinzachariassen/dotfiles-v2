@@ -17,6 +17,14 @@ echo "    repo: $REPO_URL"
 echo "    into: $REPO_DIR"
 echo
 
+# Progress is printed as "[n/5]" so an unattended run says where it is. This is
+# a helper rather than the number written out at each site: the count changes
+# every time a step is added, and last time it did, the copies drifted.
+TOTAL_STEPS=5
+step() {
+  printf '==> [%s/%s] %s\n' "$1" "$TOTAL_STEPS" "$2"
+}
+
 # --- Guards -----------------------------------------------------------------
 [ "$(uname -s)" = "Darwin" ] || {
   echo "This is macOS only." >&2
@@ -35,9 +43,9 @@ echo
 # Homebrew needs a compiler and git. The GUI installer runs asynchronously, so
 # trigger it and wait rather than racing it.
 if xcode-select -p >/dev/null 2>&1; then
-  echo "==> [1/4] Xcode Command Line Tools already installed"
+  step 1 "Xcode Command Line Tools already installed"
 else
-  echo "==> [1/4] Installing Xcode Command Line Tools (click Install in the dialog)"
+  step 1 "Installing Xcode Command Line Tools (click Install in the dialog)"
   xcode-select --install >/dev/null 2>&1 || true
 
   attempts=0
@@ -46,7 +54,8 @@ else
     attempts=$((attempts + 1))
     if [ "$attempts" -ge "$max_attempts" ]; then
       echo
-      echo "==> [1/4] Timed out waiting for Command Line Tools. Finish the dialog and re-run this script." >&2
+      echo "Timed out waiting for Command Line Tools." >&2
+      echo "Finish the dialog, then re-run this script." >&2
       exit 1
     fi
     printf '.'
@@ -59,31 +68,45 @@ fi
 if [ -x /opt/homebrew/bin/brew ]; then
   eval "$(/opt/homebrew/bin/brew shellenv)"
 else
-  echo "==> [2/4] Installing Homebrew (it will ask for your password)"
+  step 2 "Installing Homebrew (it will ask for your password)"
   sudo -v # One sudo prompt up front, with a reason, beats several mid-run.
+  # /bin/bash on purpose: this is Homebrew's own installer, which supports the
+  # system shell. Everything belonging to THIS repo needs bash 5 -- installed
+  # in the next step.
   NONINTERACTIVE=1 /bin/bash -c \
     "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
-echo "==> [2/4] Homebrew at $(brew --prefix)"
+step 2 "Homebrew at $(brew --prefix)"
 
-# --- 3. The repo ------------------------------------------------------------
+# --- 3. bash 5 ---------------------------------------------------------------
+# macOS ships bash 3.2 from 2007 and never updates it. Every script in this
+# repo needs 5, and they start running in step 5 -- before core/Brewfile gets
+# its turn -- so this one package cannot wait for the normal package phase.
+if brew list --versions bash >/dev/null 2>&1; then
+  step 3 "bash 5 already installed"
+else
+  step 3 "Installing bash 5 (macOS ships 3.2, from 2007)"
+  brew install bash
+fi
+
+# --- 4. The repo ------------------------------------------------------------
 if [ -d "$REPO_DIR/.git" ]; then
-  echo "==> [3/4] Updating existing checkout"
+  step 4 "Updating existing checkout"
   git -C "$REPO_DIR" pull --ff-only
 elif [ -e "$REPO_DIR" ]; then
-  echo "==> [3/4] $REPO_DIR exists and is not a git checkout. Move it aside first." >&2
+  echo "$REPO_DIR exists and is not a git checkout. Move it aside first." >&2
   exit 1
 else
-  echo "==> [3/4] Cloning"
+  step 4 "Cloning"
   mkdir -p "$(dirname "$REPO_DIR")"
   git clone --depth=1 "$REPO_URL" "$REPO_DIR"
 fi
 
-# --- 4. Hand off ------------------------------------------------------------
+# --- 5. Hand off ------------------------------------------------------------
 # From here the repo is on disk and `dot` owns the process.
 # Phase 1 (core packages) installs `dasel` and `fzf`; phase 2 asks what you want and applies it.
-echo "==> [4/4] Handing off to dot apply"
+step 5 "Handing off to dot apply"
 echo
 
 # Under `curl | bash` this script's stdin is the pipe, not the keyboard, so the
