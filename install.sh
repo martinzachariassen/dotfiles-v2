@@ -34,20 +34,24 @@ echo
 # --- 1. Xcode Command Line Tools --------------------------------------------
 # Homebrew needs a compiler and git. The GUI installer runs asynchronously, so
 # trigger it and wait rather than racing it.
-echo "==> [1/4] Installing Xcode Command Line Tools (it will ask for your password)"
-attempts=0
-max_attempts=180  # 180 * 10s = 30 minutes
-until xcode-select -p >/dev/null 2>&1; do
-  attempts=$((attempts + 1))
-  if [ "$attempts" -ge "$max_attempts" ]; then
-    echo
-    echo "==> [1/4] Timed out waiting for Command Line Tools. Finish the dialog and re-run this script." >&2
-    exit 1
-  fi
-  printf '.'
-  sleep 10
-done
-echo
+if ! xcode-select -p >/dev/null 2>&1; then
+  echo "==> [1/4] Installing Xcode Command Line Tools (click Install in the dialog)"
+  xcode-select --install >/dev/null 2>&1 || true
+
+  attempts=0
+  max_attempts=180  # 180 * 10s = 30 minutes
+  until xcode-select -p >/dev/null 2>&1; do
+    attempts=$((attempts + 1))
+    if [ "$attempts" -ge "$max_attempts" ]; then
+      echo
+      echo "==> [1/4] Timed out waiting for Command Line Tools. Finish the dialog and re-run this script." >&2
+      exit 1
+    fi
+    printf '.'
+    sleep 10
+  done
+  echo
+fi
 
 # --- 2. Homebrew ------------------------------------------------------------
 if [ -x /opt/homebrew/bin/brew ]; then
