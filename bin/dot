@@ -79,16 +79,20 @@ cmd_apply() {
     sudo -v
   fi
 
-  local name count=0
-  while IFS= read -r name; do
+  # Read into an array first, so "how many were there" is the array's length
+  # rather than a counter maintained by hand alongside the loop.
+  local name
+  local -a names
+  mapfile -t names < <(modules_enabled)
+
+  for name in "${names[@]}"; do
     heading "Module: $name"
     module_apply "$name"
-    count=$((count + 1))
-  done < <(modules_enabled)
+  done
 
   # The expected state after choosing the `none` profile, so say what to do
   # next rather than silently applying core and stopping.
-  if ((count == 0)); then
+  if ((${#names[@]} == 0)); then
     heading 'Modules'
     say "None enabled. List them under [modules] in $DOT_CONFIG."
   fi

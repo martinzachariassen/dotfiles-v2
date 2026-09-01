@@ -109,13 +109,17 @@ as_hook() {
   [[ $output == *"exit 1"* ]]
 }
 
-@test "err: the report survives failing inside a function" {
-  # bash 3.2 cannot give the failing line here -- it reports the function's
-  # definition line -- which is why no line number is printed at all.
+@test "err: a failure inside a function names the failing line" {
+  # The whole point of moving to bash 5. On 3.2 this reported the function's
+  # DEFINITION line instead, which is why the number used to be left out
+  # altogether -- a confidently wrong line sends you to the wrong place.
+  #
+  # as_hook writes shebang, `set`, `source`, then the snippet, so the failure
+  # is on line 4. Pinned exactly: "some number" would have passed on 3.2 too.
   as_hook 'inner() { cp /nonexistent/x "$HOME/x"; }; inner'
   [ "$status" -ne 0 ]
   [[ $output == *"cp /nonexistent/x"* ]]
-  [[ ! $output =~ hook\.sh:[0-9] ]]
+  [[ $output == *"hook.sh:4:"* ]]
 }
 
 @test "err: a failure handled inside \$() is not reported" {
