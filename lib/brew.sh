@@ -43,7 +43,7 @@ brew_bundle() {
   # --no-upgrade keeps apply fast and predictable: it installs what is missing
   # and leaves already-installed packages at whatever version you have.
   # Upgrading is `brew upgrade`, a thing you should choose to do.
-  if brew bundle --file "$file" --no-upgrade --no-lock; then
+  if brew bundle --file "$file" --no-upgrade; then
     return 0
   else
     fail "brew bundle failed for $label"
