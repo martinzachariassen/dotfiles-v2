@@ -41,7 +41,16 @@ EOF
 
 # --- apply -----------------------------------------------------------------
 cmd_apply() {
-  [[ ${1:-} == --dry-run ]] && export DOT_DRY_RUN=1
+  # Every option is matched exactly and anything else is fatal. The previous
+  # version tested only for --dry-run and ignored the rest, so `dot apply --dry`
+  # -- a plausible typo -- silently applied for real.
+  while (($#)); do
+    case $1 in
+      --dry-run) export DOT_DRY_RUN=1 ;;
+      *) die "apply: unknown option '$1'. Try: dot apply [--dry-run]" ;;
+    esac
+    shift
+  done
 
   # Phase 1. This installs dasel and fzf, which everything below depends on,
   # so nothing may run before it. Loads the CORE module, which is always enabled.
@@ -105,12 +114,16 @@ cmd_apply() {
 
 # --- config ----------------------------------------------------------------
 cmd_config() {
-  if [[ ${1:-} == --init ]]; then
-    cfg_exists && die "$DOT_CONFIG already exists. Edit it with: dot config"
-    command -v fzf >/dev/null || die 'fzf is missing. Run `dot apply` first.'
-    wizard_run
-    return 0
-  fi
+  case ${1:-} in
+    --init)
+      cfg_exists && die "$DOT_CONFIG already exists. Edit it with: dot config"
+      command -v fzf >/dev/null || die 'fzf is missing. Run `dot apply` first.'
+      wizard_run
+      return 0
+      ;;
+    '') ;;
+    *) die "config: unknown option '$1'. Try: dot config [--init]" ;;
+  esac
 
   cfg_exists || die "No config yet. Create it with: dot config --init"
   "${EDITOR:-vi}" "$DOT_CONFIG"
