@@ -57,10 +57,13 @@ wizard_run() {
   [[ -z $modules ]] && modules=$preset
 
   heading 'Git identity'
-  read -r -p "  Full name  [$(git config --global user.name)]: " name
-  read -r -p "  Email      [$(git config --global user.email)]: " email
-  [[ -z $name ]] && name=$(git config --global user.name)
-  [[ -z $email ]] && email=$(git config --global user.email)
+  local default_name default_email
+  default_name=$(git config --global user.name || true)
+  default_email=$(git config --global user.email || true)
+  read -r -p "  Full name  [$default_name]: " name
+  read -r -p "  Email      [$default_email]: " email
+  name=${name:-$default_name}
+  email=${email:-$default_email}
 
   config_generate "$name" "$email" "$modules"
 }

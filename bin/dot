@@ -8,6 +8,12 @@
 
 set -euo pipefail
 
+# Error reporting: show the command that failed, and where, rather than just
+# the exit code. This is especially useful for `dot apply` where a module hook
+# fails in a subshell and the exit code is all you get.
+set -o errtrace
+trap 'echo "dot: failed at ${BASH_SOURCE[0]}:${LINENO}: ${BASH_COMMAND}" >&2' ERR
+
 # shellcheck source=../lib/dot.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/dot.sh"
 
