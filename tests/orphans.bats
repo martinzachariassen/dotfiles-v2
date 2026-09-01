@@ -1,11 +1,8 @@
 #!/usr/bin/env bats
 #
-# fs_orphans had no test at all. That is how a `local -A` -- an associative
-# array, which is bash 4 only while macOS ships 3.2 -- reached the repo and
-# failed at runtime with "local: -A: invalid option" while CI stayed green.
-#
-# These cover the behaviour, and by exercising the function under the real
-# system bash they also pin the version constraint.
+# fs_orphans once shipped with no test at all, and a runtime-only bug rode
+# along with it while CI stayed green. These pin the behaviour: what counts as
+# an orphan, and just as importantly what does not.
 
 setup() {
   load helper
@@ -69,14 +66,4 @@ claim_one() {
   run fs_orphans
   [ "$status" -eq 0 ]
   [[ $output != *"invalid option"* ]]
-}
-
-@test "orphans: runs on the system bash without bash 4 features" {
-  # The direct regression. `local -A` here exited non-zero with a shell usage
-  # error rather than doing anything.
-  claim_one
-  run fs_orphans
-  [ "$status" -eq 0 ]
-  [[ $output != *"invalid option"* ]]
-  [[ $output != *"usage:"* ]]
 }

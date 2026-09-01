@@ -6,6 +6,19 @@
 #   dot <command> [options]
 #
 
+# The repo targets bash 5. macOS still ships 3.2 (from 2007) as /bin/bash, and
+# `#!/usr/bin/env bash` picks whichever comes first on PATH -- so a shell that
+# has not sourced Homebrew's shellenv would start this script under 3.2 and hit
+# obscure syntax errors deep inside the library. Re-exec into the right one
+# instead of failing later.
+if ((BASH_VERSINFO[0] < 5)); then
+  if [[ -x /opt/homebrew/bin/bash ]]; then
+    exec /opt/homebrew/bin/bash "$0" "$@"
+  fi
+  echo "dot needs bash 5 or newer; this is $BASH_VERSION. Run: brew install bash" >&2
+  exit 1
+fi
+
 set -euo pipefail
 
 # shellcheck source=../lib/dot.sh
@@ -28,7 +41,16 @@ EOF
 
 # --- apply -----------------------------------------------------------------
 cmd_apply() {
-  [[ ${1:-} == --dry-run ]] && export DOT_DRY_RUN=1
+  # Every option is matched exactly and anything else is fatal. The previous
+  # version tested only for --dry-run and ignored the rest, so `dot apply --dry`
+  # -- a plausible typo -- silently applied for real.
+  while (($#)); do
+    case $1 in
+      --dry-run) export DOT_DRY_RUN=1 ;;
+      *) die "apply: unknown option '$1'. Try: dot apply [--dry-run]" ;;
+    esac
+    shift
+  done
 
   # Phase 1. This installs dasel and fzf, which everything below depends on,
   # so nothing may run before it. Loads the CORE module, which is always enabled.
@@ -55,7 +77,9 @@ cmd_apply() {
 
   heading 'Core files'
   fs_link_tree "$DOT_ROOT/core"
-  bash "$DOT_ROOT/core/apply.sh"
+  # "$BASH" is this shell's own path, so a child script is guaranteed the same
+  # interpreter the driver is running under rather than whatever PATH resolves.
+  "$BASH" "$DOT_ROOT/core/apply.sh"
 
   # One sudo prompt up front, with a reason, beats several mid-run.
   if modules_want_sudo && [[ $DOT_DRY_RUN != 1 ]]; then
@@ -64,16 +88,20 @@ cmd_apply() {
     sudo -v
   fi
 
-  local name count=0
-  while IFS= read -r name; do
+  # Read into an array first, so "how many were there" is the array's length
+  # rather than a counter maintained by hand alongside the loop.
+  local name
+  local -a names
+  mapfile -t names < <(modules_enabled)
+
+  for name in "${names[@]}"; do
     heading "Module: $name"
     module_apply "$name"
-    count=$((count + 1))
-  done < <(modules_enabled)
+  done
 
   # The expected state after choosing the `none` profile, so say what to do
   # next rather than silently applying core and stopping.
-  if ((count == 0)); then
+  if ((${#names[@]} == 0)); then
     heading 'Modules'
     say "None enabled. List them under [modules] in $DOT_CONFIG."
   fi
@@ -86,12 +114,16 @@ cmd_apply() {
 
 # --- config ----------------------------------------------------------------
 cmd_config() {
-  if [[ ${1:-} == --init ]]; then
-    cfg_exists && die "$DOT_CONFIG already exists. Edit it with: dot config"
-    command -v fzf >/dev/null || die 'fzf is missing. Run `dot apply` first.'
-    wizard_run
-    return 0
-  fi
+  case ${1:-} in
+    --init)
+      cfg_exists && die "$DOT_CONFIG already exists. Edit it with: dot config"
+      command -v fzf >/dev/null || die 'fzf is missing. Run `dot apply` first.'
+      wizard_run
+      return 0
+      ;;
+    '') ;;
+    *) die "config: unknown option '$1'. Try: dot config [--init]" ;;
+  esac
 
   cfg_exists || die "No config yet. Create it with: dot config --init"
   "${EDITOR:-vi}" "$DOT_CONFIG"
@@ -109,7 +141,7 @@ cmd_doctor() {
     fail "config lists unknown module '$unknown' -- dot apply will refuse"
   done < <(modules_unknown)
 
-  bash "$DOT_ROOT/core/doctor.sh" || fail 'core checks failed'
+  "$BASH" "$DOT_ROOT/core/doctor.sh" || fail 'core checks failed'
   fs_check_tree "$DOT_ROOT/core" || true
 
   local name
@@ -124,7 +156,6 @@ cmd_doctor() {
   heading 'Orphaned links'
   local orphan found=0
   while IFS= read -r orphan; do
-    [[ -z $orphan ]] && continue
     found=1
     warn "unclaimed  ${orphan/#$HOME/\~}"
   done < <(fs_orphans)

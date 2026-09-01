@@ -1,3 +1,2 @@
 description = "zsh with XDG layout, aliases, and PATH"
-order = 10
 sudo = false

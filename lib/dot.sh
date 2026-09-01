@@ -3,9 +3,21 @@
 # The single entrypoint for shared code. Everything -- bin/dot, every module
 # apply.sh and doctor.sh, every test -- sources this one file and gets the
 # whole library. There is no partial import.
+#
+# New to bash? docs/bash-guide.md explains every idiom used in this directory,
+# one at a time. Comments in these files explain decisions, not syntax.
 
 [[ -n ${__DOT_SH:-} ]] && return 0
 __DOT_SH=1
+
+# bin/dot re-execs itself into bash 5 before it gets here. This catches the
+# entry points that bypass it -- a hook run by hand, bats -- where the symptom
+# would otherwise be a syntax error in a file the reader did not open.
+if ((BASH_VERSINFO[0] < 5)); then
+  printf 'dotfiles needs bash 5 or newer; this is %s. Run: brew install bash\n' \
+    "$BASH_VERSION" >&2
+  exit 1
+fi
 
 # --- Repo root -------------------------------------------------------------
 #
@@ -50,25 +62,26 @@ source "$DOT_ROOT/lib/wizard.sh"
 # --- Failure reporting -----------------------------------------------------
 #
 # A module hook runs in its own bash process, so without this a crash is an
-# exit code and nothing else. One line: file, command, status. For more,
+# exit code and nothing else. One line: file, line, command, status. For more,
 # hooks are ordinary scripts -- `bash -x modules/git/apply.sh`.
 #
-# No line number: for a failure inside a function bash 3.2 reports the
-# function's DEFINITION line, not the failing one, and a wrong number costs
-# more than no number.
+#   ✗ lib/fs.sh:114: mv "$dst" "$backup" (exit 1)
+#
+# BASH_LINENO[0] is the line the trap fired on, and BASH_SOURCE[1] is the file
+# that line is in -- index 1, because index 0 is this handler itself.
 __DOT_REPORTED=0
 __dot_on_err() {
-  # All three captured first: the guards below are themselves commands, and
+  # All four captured first: the guards below are themselves commands, and
   # running them overwrites BASH_COMMAND.
-  local status=$? cmd=$BASH_COMMAND src=${BASH_SOURCE[1]}
+  local status=$? cmd=$BASH_COMMAND src=${BASH_SOURCE[1]} line=${BASH_LINENO[0]}
   # errtrace fires this inside $( ) too, where toml_get probes for a missing
   # key -- without this every config default reported a failure.
   ((BASH_SUBSHELL == 0)) || return 0
   # The trap fires again at each frame as the stack unwinds.
   ((__DOT_REPORTED)) && return 0
   __DOT_REPORTED=1
-  printf '  %s✗ %s: %s (exit %s)%s\n' \
-    "$__C_RED" "${src#"$DOT_ROOT"/}" "$cmd" "$status" "$__C_RESET" >&2
+  printf '  %s✗ %s:%s: %s (exit %s)%s\n' \
+    "$__C_RED" "${src#"$DOT_ROOT"/}" "$line" "$cmd" "$status" "$__C_RESET" >&2
   return 0
 }
 

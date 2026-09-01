@@ -8,9 +8,6 @@
 # that safe is tests/contract.bats, which walks the same glob and enforces the
 # contract every module must satisfy.
 
-[[ -n ${__DOT_MODULES_SH:-} ]] && return 0
-__DOT_MODULES_SH=1
-
 modules_dir() { printf '%s\n' "$DOT_ROOT/modules/$1"; }
 module_manifest() { printf '%s\n' "$(modules_dir "$1")/module.toml"; }
 
@@ -25,9 +22,8 @@ modules_all() {
 
 module_exists() { [[ -f $(module_manifest "$1") ]]; }
 
-# --- Manifest fields (the three that exist; a fourth needs justifying) ------
+# --- Manifest fields (the two that exist; a third needs justifying) ---------
 module_desc() { toml_get "$(module_manifest "$1")" 'description' "$1"; }
-module_order() { toml_get "$(module_manifest "$1")" 'order' '50'; }
 module_sudo() { [[ $(toml_get "$(module_manifest "$1")" 'sudo' 'false') == true ]]; }
 
 # module_setting NAME KEY [DEFAULT] -- read [settings.<name>].<key> from the
@@ -47,27 +43,21 @@ module_setting_bool() {
   [[ $(module_setting "$1" "$2" "${3:-false}") == true ]]
 }
 
-# modules_sort -- read names on stdin, emit them ordered by (order, name).
-#
-# One ordering axis, used by both apply and doctor. v1 had a separate
-# FEATURE_DOCTOR_ORDER, which is a second thing to keep in sync for no gain.
-modules_sort() {
-  local name
-  while IFS= read -r name; do
-    [[ -n $name ]] || continue
-    printf '%s\t%s\n' "$(module_order "$name")" "$name"
-  done | sort -k1,1n -k2,2 | cut -f2
-}
-
 # Modules the config asks for, minus any that no longer exist in the repo.
 #
-# Silent by design. A single run asks several times -- the sudo check, the
-# apply loop, the orphan scan -- and every caller reads it as
-# `< <(modules_enabled)`, which is a subshell. Warning from in here therefore
-# printed once per caller, and no amount of caching fixes that: a variable set
-# inside a process substitution never reaches the parent. Reporting is
-# modules_warn_unknown's job, called once, from the one place that knows a run
-# has started.
+# Alphabetical, via the trailing `| sort`. Modules are independent by design --
+# each one's apply.sh assumes only that core has run -- so name order is as
+# good as any, and it makes two runs read identically. There was an `order`
+# field once; every module set it to 50.
+#
+# Silent by design, and it cannot be otherwise. A single run asks several times
+# -- the sudo check, the apply loop, the orphan scan -- and every caller reads
+# it as `< <(modules_enabled)`, which is a subshell (see docs/bash-guide.md).
+# So a warning printed in here appears once per caller, and no amount of
+# caching fixes that: a variable set inside a subshell never reaches the
+# parent. Complaining about unknown names is modules_require_known's job,
+# called once, from the one place that knows a run has started.
+#
 # `if` rather than `&&`: with pipefail, a trailing `&&` whose test fails leaves
 # the loop at status 1, which propagates out of the pipeline and kills any
 # caller doing `x=$(modules_enabled)` under `set -e`. It only takes one unknown
@@ -76,7 +66,7 @@ modules_enabled() {
   local name
   while IFS= read -r name; do
     if module_exists "$name"; then printf '%s\n' "$name"; fi
-  done < <(cfg_list 'modules.enabled') | modules_sort
+  done < <(cfg_list 'modules.enabled') | sort
 }
 
 # Names the config lists that the repo has no module for -- typos, or modules
@@ -124,9 +114,11 @@ module_run_hook() {
   script="$(modules_dir "$name")/$hook"
   [[ -f $script ]] || return 0
 
+  # "$BASH" rather than bare `bash`: the hook then runs under the same
+  # interpreter as the driver, not whatever PATH happens to resolve to.
   DOT_MODULE=$name \
     DOT_MODULE_DIR="$(modules_dir "$name")" \
-    bash "$script"
+    "$BASH" "$script"
 }
 
 # module_apply NAME -- packages, then links, then imperative steps.

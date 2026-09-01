@@ -46,6 +46,21 @@ teardown() { teardown_sandbox; }
   [ "$output" = "fallback" ]
 }
 
+@test "get: a value containing a colon survives the YAML round trip" {
+  # Everything is read as YAML, and YAML would read `x: y` as a mapping -- so
+  # dasel single-quotes it. __cfg_unquote has to take those quotes back off.
+  printf 'note = "time: 10:30"\n' >"$DOT_CONFIG"
+  run cfg_get 'note'
+  [ "$output" = "time: 10:30" ]
+}
+
+@test "get: an empty string reads back as empty, not as two quote marks" {
+  # The other value YAML cannot render bare: it comes back as the literal "".
+  printf 'note = ""\n' >"$DOT_CONFIG"
+  run cfg_get 'note' 'fallback'
+  [ "$output" = "" ]
+}
+
 @test "list: reads an array one element per line" {
   run cfg_list 'modules.enabled'
   [ "${lines[0]}" = "git" ]

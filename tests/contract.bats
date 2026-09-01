@@ -19,12 +19,12 @@ teardown() { teardown_sandbox; }
   [ "${#lines[@]}" -gt 0 ]
 }
 
-@test "every module has a parseable manifest with all three fields" {
+@test "every module has a parseable manifest with both fields" {
   local name manifest
   while IFS= read -r name; do
     manifest="$DOT_ROOT/modules/$name/module.toml"
-    for field in description order sudo; do
-      run dasel -i toml -o json "$field" <"$manifest"
+    for field in description sudo; do
+      run dasel -i toml -o yaml "$field" <"$manifest"
       [ "$status" -eq 0 ] || {
         echo "module '$name' is missing field '$field'"
         return 1
@@ -43,14 +43,9 @@ teardown() { teardown_sandbox; }
   done < <(modules_all)
 }
 
-@test "order is an integer and sudo is a boolean" {
-  local name order sdo
+@test "sudo is a boolean" {
+  local name sdo
   while IFS= read -r name; do
-    order=$(module_order "$name")
-    [[ $order =~ ^[0-9]+$ ]] || {
-      echo "$name: order '$order' is not an integer"
-      return 1
-    }
     sdo=$(toml_get "$(module_manifest "$name")" sudo)
     [[ $sdo == true || $sdo == false ]] || {
       echo "$name: sudo must be a boolean"
@@ -59,14 +54,15 @@ teardown() { teardown_sandbox; }
   done < <(modules_all)
 }
 
-@test "manifests carry no fourth field" {
+@test "manifests carry no third field" {
   # Field creep is the most likely path back to v1's feature.sh. A new field
   # is allowed, but only deliberately -- which means editing this test.
-  # `default` was removed once its only reader, the `custom` profile, went.
+  # `default` went with the `custom` profile that read it; `order` went once
+  # every module had settled on the same value.
   local name keys
   while IFS= read -r name; do
     keys=$(dasel -i toml -o yaml 'keys()' <"$(module_manifest "$name")" | sed 's/^- //' | sort | tr '\n' ' ')
-    [ "$keys" = "description order sudo " ] || {
+    [ "$keys" = "description sudo " ] || {
       echo "$name has unexpected manifest fields: $keys"
       return 1
     }
@@ -115,13 +111,6 @@ teardown() { teardown_sandbox; }
       }
     done < <(toml_list "$DOT_ROOT/profiles.toml" "profiles.$profile")
   done < <(toml_list "$DOT_ROOT/profiles.toml" 'profiles.keys()')
-}
-
-@test "modules sort by order then name" {
-  run bash -c "printf 'macos-defaults\ngit\nzsh\n' | { source '$DOT_ROOT/lib/dot.sh'; modules_sort; }"
-  [ "${lines[0]}" = "zsh" ]            # order 10
-  [ "${lines[1]}" = "git" ]            # order 50
-  [ "${lines[2]}" = "macos-defaults" ] # order 90
 }
 
 @test "every script with a shebang is executable" {

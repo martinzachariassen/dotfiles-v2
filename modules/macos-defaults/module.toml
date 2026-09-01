@@ -1,3 +1,2 @@
 description = "macOS system preferences (Dock, Finder, keyboard)"
-order = 90
 sudo = true

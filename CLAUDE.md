@@ -11,7 +11,12 @@ All code, comments, commit messages and docs are in **English**.
 ## The size budget
 
 Shipped shell code is capped at **1500 lines**; CI fails over it. Tests are
-uncapped and excluded from the count.
+uncapped and excluded from the count. `make size` prints both.
+
+The `Makefile` is not a `*.sh` file and so is not counted. That is not a
+loophole to route logic through: it holds the check commands and nothing else,
+because anything with logic in it belongs in `lib/`, where shellcheck and the
+tests can see it.
 
 v1 reached ~20,700 lines. Going over the cap means cutting something, not
 raising the number. If you cannot find anything to cut, that is the finding.
@@ -57,7 +62,7 @@ reports the same thing without dying, being the read-only verb.
 | Thing | Limit | Why |
 |---|---|---|
 | `lib/` | 7 files, no subdirectories | v1's `core/` was this shape at 13 files / 1324 lines. Pressure to add an eighth is a signal to delete something. |
-| `module.toml` | 3 fields | Field creep is the path back to `feature.sh`. A fourth needs a written justification and an edit to `contract.bats`. `default` was the fourth; it went when the `custom` profile that read it went. |
+| `module.toml` | 2 fields | Field creep is the path back to `feature.sh`. A third needs a written justification and an edit to `contract.bats`. `default` went with the `custom` profile that read it; `order` went once every module had settled on the same value. |
 | `lib/wizard.sh` | 60 lines | Where the 587-line monster regrows. If it needs a loop over a question schema, stop. |
 | `bin/dot` | 3 verbs, hardcoded `case` | A verb table grew to 84 lines with five drifting consumers. Modules ship scripts in `home/.local/bin/` instead. |
 
@@ -65,19 +70,23 @@ reports the same thing without dying, being the read-only verb.
 
 Revisit these once there are ~8 modules:
 
-- **`order`** is a dependency system in disguise. If every module still says
-  `50`, delete the field and sort by name.
+- **Alphabetical module order.** `modules_enabled` just sorts by name. If a
+  module ever genuinely needs to run after another one, that is a dependency,
+  and it needs a real answer -- not the `order = 50` integer that used to be
+  here and that every module set to a number nobody chose.
 - **`sudo`** buys one prompt instead of several. If the keepalive logic ever
   exceeds ~12 lines, cut the field and let `apply.sh` call `sudo` itself.
   (v1's `core/sudo.sh` reached 56 lines.)
 
 ## Gotchas that cost real time
 
-**Target bash is 3.2.57.** macOS ships it and this repo installs no other, so
-every `#!/usr/bin/env bash` resolves to it. No `declare -A` / `local -A`, no
-`mapfile`/`readarray`, no `${x,,}`, no `BASHPID` (use `BASH_SUBSHELL`). A
-`local -A` shipped once and failed only at runtime, on the one function with no
-test; `tests/dot.bats` now greps for these constructs.
+**Target bash is 5, and four places have to agree on that.** macOS ships 3.2.57
+(2007) as `/bin/bash` and never updates it, so: `install.sh` runs
+`brew install bash` before it hands off (phase 1 is too late -- `bin/dot` is
+already running by then), `core/Brewfile` lists it so `brew bundle` keeps it,
+`bin/dot` re-execs itself into `/opt/homebrew/bin/bash` if it started under an
+older one, and `lib/dot.sh` refuses to load under one. CI installs it
+explicitly, or the suite silently tests the wrong shell.
 
 **`cmd && printf` as the last thing in a loop is a landmine.** A false test on
 the final iteration leaves the loop at status 1. Under `set -e` that kills an
@@ -91,17 +100,19 @@ the subshell. Things that must happen once per run -- warnings, validation --
 belong at the call site in `bin/dot`, not in the function being called.
 
 **Failure reporting is one line, and stays one line.** The ERR trap in
-`lib/dot.sh` prints file, command and status -- nothing else. Both guards on it
-are load-bearing: `BASH_SUBSHELL == 0` (errtrace fires it inside `$( )`, where
-`toml_get` probes for missing keys, and a reporter that cries wolf gets
-ignored) and `[[ -z $(trap -p ERR) ]]` (bats installs its own). It carries no
-line number because bash 3.2 reports a function's definition line rather than
-the failing one. For more, `bash -x <hook>` already exists; a `DOT_DEBUG`
-variable with a custom `PS4` was tried and removed as not worth its weight.
+`lib/dot.sh` prints file, line, command and status -- nothing else. Both guards
+on it are load-bearing: `BASH_SUBSHELL == 0` (errtrace fires it inside `$( )`,
+where `toml_get` probes for missing keys, and a reporter that cries wolf gets
+ignored) and `[[ -z $(trap -p ERR) ]]` (bats installs its own). For more,
+`bash -x <hook>` already exists; a `DOT_DEBUG` variable with a custom `PS4` was
+tried and removed as not worth its weight.
 
 **dasel v3 is not v2.** No `-f` flag (input comes on stdin), `-i` means input
-format rather than in-place, and in-place editing was removed entirely.
-`-o json` for scalars, `-o yaml` for arrays. A missing key exits 1.
+format rather than in-place, and in-place editing was removed entirely. A
+missing key exits 1. Everything is read as `-o yaml`, scalars included: one
+output format means one set of quoting rules to undo, in `__cfg_unquote`. YAML
+quotes a value only when it has to, so the two cases that matter are an empty
+string (comes back as `""`) and anything containing `: ` (single-quoted).
 
 **dasel parses `-` as subtraction.** `settings.macos-defaults.dock` fails with
 a type error, and neither `"` nor `'` quoting helps -- only bracket syntax,
@@ -125,7 +136,18 @@ because the symptom is a command that mysteriously does not exist.
 ## Before committing
 
 ```sh
-bats tests/
-shellcheck -x install.sh bin/dot lib/*.sh core/*.sh modules/*/apply.sh modules/*/doctor.sh
-shfmt -d -i 2 -ci install.sh bin/dot lib/*.sh core/*.sh modules/*/*.sh tests/helper.bash
+make check
 ```
+
+shellcheck, shfmt, bats and the size budget. The `Makefile` is the only copy of
+those commands -- CI runs the same target. Do not inline them anywhere else;
+there were three copies before, and they had already drifted.
+
+## Explaining bash
+
+The repo owner is not a shell expert. `docs/bash-guide.md` explains every idiom
+used here in plain English -- keep it current when introducing a new one, and
+prefer a one-clause pointer at the call site
+(`# < <(...) is a subshell; see docs/bash-guide.md`) over re-explaining the
+idiom inline. Comments in the code are for **why this decision**, not for what
+bash syntax means.

@@ -14,9 +14,6 @@
 #      after a collision the file is in exactly one place -- not two, with no
 #      way to tell which one you have been editing.
 
-[[ -n ${__DOT_FS_SH:-} ]] && return 0
-__DOT_FS_SH=1
-
 # Tallies for the end-of-run report.
 DOT_N_LINKED=0
 DOT_N_RELINKED=0
@@ -48,6 +45,9 @@ fs_backup_used() { [[ -n $__DOT_BACKUP_DIR ]]; }
 fs_pairs() {
   local dir=$1 home="$1/home" src rel
   [[ -d $home ]] || return 0
+  # -print0 and `read -d ''` separate paths with a zero byte instead of a
+  # newline -- the one character a filename cannot contain. See
+  # docs/bash-guide.md.
   while IFS= read -r -d '' src; do
     rel=${src#"$home"/}
     printf '%s\t%s\n' "$src" "$HOME/$rel"
@@ -161,7 +161,7 @@ fs_report() {
   ((DOT_N_BACKED_UP)) && parts+=("$DOT_N_BACKED_UP backed up")
   ((DOT_N_UNCHANGED)) && parts+=("$DOT_N_UNCHANGED unchanged")
 
-  if [[ ${#parts[@]} -eq 0 ]]; then
+  if ((${#parts[@]} == 0)); then
     say "No files to link."
   else
     # Joined with printf rather than IFS + "${parts[*]}": that form uses only
@@ -184,34 +184,41 @@ fs_report() {
 # is bounded to directories some module's home/ actually declares, which keeps
 # it fast and stops it from walking all of $HOME.
 fs_orphans() {
-  # Two newline-delimited sets, tested with `grep -qxF`. An associative array
-  # would read better, but macOS ships bash 3.2, which does not have them --
-  # and a `local -A` here fails at runtime on the only OS this repo supports.
-  local claimed='' roots=''
+  # Two sets, as hash maps: every path an enabled module claims, and the
+  # directories those paths live in. `claimed` is a map rather than a list so
+  # that "did anyone claim this link?" is one lookup instead of a scan, and
+  # `roots` is a map because its whole job is to collapse duplicates -- the
+  # same directory is named by every file a module puts in it.
+  local -A claimed=() roots=()
   local dir src dst link target
+  local -a scan
 
-  # Unquoted $(...) here used to word-split the module paths, so a repo cloned
-  # to a directory with a space in it scanned the wrong places.
+  # `while read` over the module list, not `for dir in $(...)`: the unquoted
+  # form word-splits, so a repo cloned into a path with a space in it scanned
+  # the wrong directories.
   while IFS= read -r dir; do
     while IFS=$'\t' read -r src dst; do
-      claimed+="$dst"$'\n'
-      roots+="$(dirname "$dst")"$'\n'
+      claimed[$dst]=1
+      roots[$(dirname "$dst")]=1
     done < <(fs_pairs "$dir")
   done < <(
     modules_enabled_dirs
     printf '%s\n' "$DOT_ROOT/core"
   )
 
-  [[ -z $roots ]] && return 0
+  ((${#roots[@]})) || return 0
 
-  # Bounded to directories some module actually declares, so this never walks
-  # the whole of $HOME.
-  while IFS= read -r dir; do
+  # Sorted so the report reads the same way twice; a hash map has no order.
+  mapfile -t scan < <(printf '%s\n' "${!roots[@]}" | sort)
+
+  # -maxdepth 1 keeps this bounded to directories some module actually
+  # declares, so it never walks the whole of $HOME.
+  for dir in "${scan[@]}"; do
     [[ -d $dir ]] || continue
     while IFS= read -r -d '' link; do
       target=$(readlink "$link") || continue
       [[ $target == "$DOT_ROOT"/* ]] || continue
-      grep -qxF -- "$link" <<<"$claimed" || printf '%s\n' "$link"
+      [[ -n ${claimed[$link]:-} ]] || printf '%s\n' "$link"
     done < <(find "$dir" -maxdepth 1 -type l -print0 2>/dev/null)
-  done < <(printf '%s' "$roots" | sort -u)
+  done
 }

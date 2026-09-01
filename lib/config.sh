@@ -13,24 +13,37 @@
 #
 # dasel v3 notes, verified against 3.11.2:
 #   * there is no -f flag any more; input arrives on stdin
-#   * -o json quotes strings predictably, so scalars are unquoted here in bash
-#   * -o yaml renders an array as one "- item" per line
+#   * -i is the INPUT format, not in-place editing (which v3 removed)
 #   * a missing key is an error with exit status 1, which is how defaults work
-
-[[ -n ${__DOT_CONFIG_SH:-} ]] && return 0
-__DOT_CONFIG_SH=1
+#   * -o yaml is used for everything here: it renders an array as one "- item"
+#     per line, and a scalar as itself. One output format means one set of
+#     quoting rules to undo, in __cfg_unquote below.
 
 cfg_exists() { [[ -f $DOT_CONFIG ]]; }
 
-# Strip one layer of JSON string quoting. Booleans and numbers pass through
-# untouched because dasel emits them bare.
+# Undo the quoting dasel's YAML output adds.
+#
+# YAML quotes a value only when leaving it bare would be ambiguous, so almost
+# everything arrives untouched and falls straight through:
+#
+#   Git configuration -> Git configuration     (bare)
+#   'x: y'            -> x: y                  (a colon would start a mapping)
+#   ""                -> (empty string)
+#   true, 3           -> true, 3               (bare)
 __cfg_unquote() {
   local v=$1
-  if [[ $v == '"'*'"' ]]; then
-    v=${v:1:${#v}-2}
-    v=${v//\\\"/\"}
-    v=${v//\\\\/\\}
-  fi
+  case $v in
+    "'"*"'")
+      v=${v:1:${#v}-2}
+      # Inside single quotes YAML escapes a quote by doubling it.
+      v=${v//\'\'/\'}
+      ;;
+    '"'*'"')
+      v=${v:1:${#v}-2}
+      v=${v//\\\"/\"}
+      v=${v//\\\\/\\}
+      ;;
+  esac
   printf '%s\n' "$v"
 }
 
@@ -42,7 +55,7 @@ toml_get() {
     printf '%s\n' "$default"
     return 0
   }
-  if raw=$(dasel -i toml -o json "$key" <"$file" 2>/dev/null); then
+  if raw=$(dasel -i toml -o yaml "$key" <"$file" 2>/dev/null); then
     __cfg_unquote "$raw"
   else
     printf '%s\n' "$default"
@@ -54,13 +67,14 @@ toml_list() {
   local file=$1 key=$2 line
   [[ -f $file ]] || return 0
   dasel -i toml -o yaml "$key" <"$file" 2>/dev/null | while IFS= read -r line; do
+    # An empty array renders as the single line "[]".
     [[ $line == '[]' ]] && continue
-    line=${line#- }
-    # yaml quotes only when the value needs it; module names never do, but
-    # this keeps the reader honest for anything else stored as a list.
-    [[ $line == "'"*"'" ]] && line=${line:1:${#line}-2}
-    [[ $line == '"'*'"' ]] && line=${line:1:${#line}-2}
-    [[ -n $line ]] && printf '%s\n' "$line"
+    # "- name" is one array element; strip the marker, then the same quoting
+    # rules apply as for a scalar.
+    line=$(__cfg_unquote "${line#- }")
+    # `if`, not `&&`: a trailing `&&` that tests false on the LAST line leaves
+    # the loop -- and so the pipeline -- at status 1. See docs/bash-guide.md.
+    if [[ -n $line ]]; then printf '%s\n' "$line"; fi
   done
 }
 
@@ -68,11 +82,6 @@ toml_list() {
 
 cfg_get() { toml_get "$DOT_CONFIG" "$1" "${2:-}"; }
 cfg_list() { toml_list "$DOT_CONFIG" "$1"; }
-
-# cfg_bool KEY [DEFAULT] -- true only for the literal TOML value `true`.
-cfg_bool() {
-  [[ $(cfg_get "$1" "${2:-false}") == true ]]
-}
 
 # --- The one writer --------------------------------------------------------
 #
