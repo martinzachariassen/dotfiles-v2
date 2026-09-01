@@ -83,4 +83,4 @@ fi
 # Phase 1 (core packages) installs `dasel` and `fzf`; phase 2 asks what you want and applies it.
 echo "==> [4/4] Handing off to dot apply"
 echo
-exec bash "$REPO_DIR/bin/dot" apply
+exec bash "$REPO_DIR/bin/dot" apply < /dev/tty
