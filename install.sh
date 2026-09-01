@@ -4,14 +4,6 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/martinzachariassen/dotfiles-v2/main/install.sh | bash
 #
-# It runs before the repo exists, so it can depend on nothing in it. That is
-# why there is no colour, no progress bar, no shared helper -- plain echo,
-# start to finish.
-#
-# This constraint is the whole point. v1 duplicated ~100 lines of UI code into
-# its bootstrap for exactly this reason, and the two copies drifted. The fix
-# is not a cleverer way to share the UI: it is to have no UI worth sharing.
-#
 # Everything interesting happens in `dot apply`, which this hands off to.
 
 set -euo pipefail
@@ -33,37 +25,36 @@ echo
   echo "Do not run this as root." >&2
   exit 1
 }
-[ "$(uname -m)" = "arm64" ] || echo "!   Not Apple Silicon; continuing anyway."
+[ "$(uname -m)" = "arm64" ] || {
+  echo "! Not Apple Silicon; exiting."
+  exit 1
+}
 
 # --- 1. Xcode Command Line Tools --------------------------------------------
 # Homebrew needs a compiler and git. The GUI installer runs asynchronously, so
 # trigger it and wait rather than racing it.
-if xcode-select -p >/dev/null 2>&1; then
-  echo "==> [1/4] Command Line Tools already installed"
-else
-  echo "==> [1/4] Installing Command Line Tools (a dialog will appear)"
-  xcode-select --install >/dev/null 2>&1 || true
-  until xcode-select -p >/dev/null 2>&1; do
-    printf '.'
-    sleep 10
-  done
-  echo
-fi
+attempts=0
+max_attempts=180  # 180 * 10s = 30 minutes
+until xcode-select -p >/dev/null 2>&1; do
+  attempts=$((attempts + 1))
+  if [ "$attempts" -ge "$max_attempts" ]; then
+    echo
+    echo "Timed out waiting for Command Line Tools. Finish the dialog and re-run this script." >&2
+    exit 1
+  fi
+  printf '.'
+  sleep 10
+done
+echo
 
 # --- 2. Homebrew ------------------------------------------------------------
 if [ -x /opt/homebrew/bin/brew ]; then
   eval "$(/opt/homebrew/bin/brew shellenv)"
-elif [ -x /usr/local/bin/brew ]; then
-  eval "$(/usr/local/bin/brew shellenv)"
 else
   echo "==> [2/4] Installing Homebrew (it will ask for your password)"
   NONINTERACTIVE=1 /bin/bash -c \
     "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  if [ -x /opt/homebrew/bin/brew ]; then
-    eval "$(/opt/homebrew/bin/brew shellenv)"
-  else
-    eval "$(/usr/local/bin/brew shellenv)"
-  fi
+  eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
 echo "==> [2/4] Homebrew at $(brew --prefix)"
 
@@ -81,8 +72,8 @@ else
 fi
 
 # --- 4. Hand off ------------------------------------------------------------
-# From here the repo is on disk and `dot` owns the process. Phase 1 (core
-# packages) installs dasel and fzf; phase 2 asks what you want and applies it.
+# From here the repo is on disk and `dot` owns the process.
+# Phase 1 (core packages) installs `dasel` and `fzf`; phase 2 asks what you want and applies it.
 echo "==> [4/4] Handing off to dot apply"
 echo
 exec bash "$REPO_DIR/bin/dot" apply
