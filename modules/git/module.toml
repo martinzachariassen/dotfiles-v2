@@ -1,3 +1,2 @@
 description = "Git config, aliases, and a machine-local include"
-order = 50
 sudo = false

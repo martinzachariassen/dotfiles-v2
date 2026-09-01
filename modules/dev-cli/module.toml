@@ -1,3 +1,2 @@
 description = "Extra development CLI tools"
-order = 40
 sudo = false

@@ -78,7 +78,7 @@ in_strict_shell() {
 # so a false test on the LAST iteration left the loop at status 1 and `set -e`
 # killed the assignment. That helper is gone with the `custom` profile, but the
 # identical shape lives on in modules_enabled -- and there pipefail carries the
-# loop's status out through `| modules_sort`, so it reaches the caller too.
+# loop's status out through the trailing `| sort`, so it reaches the caller too.
 
 @test "enabled: an unknown module sorting last does not abort the caller" {
   config_generate "A" "a@b.c" "$(printf 'git\nzzz-bogus\n')"
@@ -192,7 +192,7 @@ in_strict_shell() {
 
   config_generate "Ada Lovelace" "ada@example.com" "$picked"
 
-  # modules_enabled sorts by (order, name); compare as sets.
+  # modules_enabled sorts; the picker does not. Compare as sets.
   [ "$(modules_enabled | sort)" = "$(printf '%s\n' "$picked" | sort)" ]
 }
 

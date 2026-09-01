@@ -5,9 +5,6 @@
 # before the repo exists and a second copy of this file is exactly the kind of
 # duplication v2 is built to avoid.
 
-[[ -n ${__DOT_UI_SH:-} ]] && return 0
-__DOT_UI_SH=1
-
 # Colour only when stdout is a terminal and NO_COLOR is unset.
 # https://no-color.org
 if [[ -t 1 && -z ${NO_COLOR:-} ]]; then

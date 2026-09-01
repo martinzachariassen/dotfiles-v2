@@ -4,9 +4,6 @@
 # so wrapping it in progress tracking or package diffing would only reimplement
 # something that works.
 
-[[ -n ${__DOT_BREW_SH:-} ]] && return 0
-__DOT_BREW_SH=1
-
 # Put brew on PATH if it is installed but the current shell has not been told.
 brew_load() {
   command -v brew >/dev/null 2>&1 && return 0

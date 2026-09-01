@@ -8,9 +8,6 @@
 # HARD CAP: 60 lines of code. If this needs a loop over a question schema,
 # stop and reconsider -- that is how the last one started.
 
-[[ -n ${__DOT_WIZARD_SH:-} ]] && return 0
-__DOT_WIZARD_SH=1
-
 DOT_PROFILES="$DOT_ROOT/profiles.toml"
 
 # Esc and Ctrl-C make fzf exit 130 with no output, and inside `var=$(...)` that

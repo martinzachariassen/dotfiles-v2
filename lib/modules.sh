@@ -8,9 +8,6 @@
 # that safe is tests/contract.bats, which walks the same glob and enforces the
 # contract every module must satisfy.
 
-[[ -n ${__DOT_MODULES_SH:-} ]] && return 0
-__DOT_MODULES_SH=1
-
 modules_dir() { printf '%s\n' "$DOT_ROOT/modules/$1"; }
 module_manifest() { printf '%s\n' "$(modules_dir "$1")/module.toml"; }
 
@@ -25,9 +22,8 @@ modules_all() {
 
 module_exists() { [[ -f $(module_manifest "$1") ]]; }
 
-# --- Manifest fields (the three that exist; a fourth needs justifying) ------
+# --- Manifest fields (the two that exist; a third needs justifying) ---------
 module_desc() { toml_get "$(module_manifest "$1")" 'description' "$1"; }
-module_order() { toml_get "$(module_manifest "$1")" 'order' '50'; }
 module_sudo() { [[ $(toml_get "$(module_manifest "$1")" 'sudo' 'false') == true ]]; }
 
 # module_setting NAME KEY [DEFAULT] -- read [settings.<name>].<key> from the
@@ -47,19 +43,12 @@ module_setting_bool() {
   [[ $(module_setting "$1" "$2" "${3:-false}") == true ]]
 }
 
-# modules_sort -- read names on stdin, emit them ordered by (order, name).
-#
-# One ordering axis, used by both apply and doctor. v1 had a separate
-# FEATURE_DOCTOR_ORDER, which is a second thing to keep in sync for no gain.
-modules_sort() {
-  local name
-  while IFS= read -r name; do
-    [[ -n $name ]] || continue
-    printf '%s\t%s\n' "$(module_order "$name")" "$name"
-  done | sort -k1,1n -k2,2 | cut -f2
-}
-
 # Modules the config asks for, minus any that no longer exist in the repo.
+#
+# Alphabetical, via the trailing `| sort`. Modules are independent by design --
+# each one's apply.sh assumes only that core has run -- so name order is as
+# good as any, and it makes two runs read identically. There was an `order`
+# field once; every module set it to 50.
 #
 # Silent by design. A single run asks several times -- the sudo check, the
 # apply loop, the orphan scan -- and every caller reads it as
@@ -76,7 +65,7 @@ modules_enabled() {
   local name
   while IFS= read -r name; do
     if module_exists "$name"; then printf '%s\n' "$name"; fi
-  done < <(cfg_list 'modules.enabled') | modules_sort
+  done < <(cfg_list 'modules.enabled') | sort
 }
 
 # Names the config lists that the repo has no module for -- typos, or modules

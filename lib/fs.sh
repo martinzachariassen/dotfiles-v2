@@ -14,9 +14,6 @@
 #      after a collision the file is in exactly one place -- not two, with no
 #      way to tell which one you have been editing.
 
-[[ -n ${__DOT_FS_SH:-} ]] && return 0
-__DOT_FS_SH=1
-
 # Tallies for the end-of-run report.
 DOT_N_LINKED=0
 DOT_N_RELINKED=0
