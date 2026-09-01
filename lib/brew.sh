@@ -8,16 +8,12 @@
 __DOT_BREW_SH=1
 
 # Put brew on PATH if it is installed but the current shell has not been told.
-# Apple Silicon first, Intel second; nothing else is supported.
 brew_load() {
   command -v brew >/dev/null 2>&1 && return 0
-  local candidate
-  for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
-    if [[ -x $candidate ]]; then
-      eval "$("$candidate" shellenv)"
-      return 0
-    fi
-  done
+  if [[ -x /opt/homebrew/bin/brew ]]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+    return 0
+  fi
   return 1
 }
 

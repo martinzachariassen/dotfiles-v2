@@ -15,9 +15,9 @@ brew "fzf"       # the first-run module picker
 brew "git"       # cloning and updating this repo
 
 # --- Quality gates (pre-commit and CI run the same binaries) ----------------
-brew "bats-core" # test runner
-brew "shellcheck"
-brew "shfmt"
+brew "bats-core"  # test runner
+brew "shellcheck" # shell linter
+brew "shfmt"      # shell formatter
 
 # --- Baseline CLI -----------------------------------------------------------
 brew "bat"     # cat with syntax highlighting

@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 #
-# dot -- the dotfiles CLI.
+# `dot` -- the dotfiles CLI.
 #
-# Three verbs, in a hardcoded case statement. A module CANNOT add a verb: if
-# one needs a command, it ships a script in its home/.local/bin/. v1 grew a
-# 84-line verb table with five consumers that drifted out of sync, and this
-# case statement is the deliberate refusal to start down that road again.
+# Usage:
+#   dot <command> [options]
+#
 
 set -euo pipefail
 
@@ -32,7 +31,7 @@ cmd_apply() {
   [[ ${1:-} == --dry-run ]] && export DOT_DRY_RUN=1
 
   # Phase 1. This installs dasel and fzf, which everything below depends on,
-  # so nothing may run before it.
+  # so nothing may run before it. Loads the CORE module, which is always enabled.
   heading 'Core packages'
   if ! brew_load; then
     die 'Homebrew is not installed. Run install.sh first.'

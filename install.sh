@@ -5,6 +5,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/martinzachariassen/dotfiles-v2/main/install.sh | bash
 #
 # Everything interesting happens in `dot apply`, which this hands off to.
+#
 
 set -euo pipefail
 
@@ -33,6 +34,7 @@ echo
 # --- 1. Xcode Command Line Tools --------------------------------------------
 # Homebrew needs a compiler and git. The GUI installer runs asynchronously, so
 # trigger it and wait rather than racing it.
+echo "==> [1/4] Installing Xcode Command Line Tools (it will ask for your password)"
 attempts=0
 max_attempts=180  # 180 * 10s = 30 minutes
 until xcode-select -p >/dev/null 2>&1; do

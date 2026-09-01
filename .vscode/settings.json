@@ -1,0 +1,17 @@
+{
+  // Bash IDE (mads-hartmann.bash-ide-vscode) - "Go to Definition" på tvers av script.
+  // Nødvendig her fordi source-stiene er dynamiske: source "${DOT_ROOT:?}/lib/dot.sh"
+  // kan ikke løses statisk, så vi indekserer hele workspacet i stedet.
+  "bashIde.includeAllWorkspaceSymbols": true,
+
+  // Ta med script uten filendelse (f.eks. bin/dot) i tillegg til *.sh.
+  "bashIde.globPattern": "**/{*.sh,*.bash,*.inc,*.command,bin/*}",
+
+  // shellcheck kjøres allerede av timonwong.shellcheck – unngå doble diagnostikk-meldinger.
+  "bashIde.shellcheckPath": "",
+
+  // Extension-løse script skal behandles som shell.
+  "files.associations": {
+    "bin/dot": "shellscript"
+  }
+}
