@@ -1,0 +1,13 @@
+# Wizard presets.
+#
+# A profile is a starting point for the first-run checklist and NOTHING else.
+# `dot apply` never reads this file: the wizard turns your pick into an
+# explicit list in config.toml, and that list is what gets applied.
+#
+# That restraint is deliberate. In v1 the profile was a live key that modules
+# branched on, and retiring it left three readers of a dead value behind.
+# Here, deleting a profile can never affect a machine that is already set up.
+
+[profiles]
+personal = ["git", "zsh", "dev-cli", "macos-defaults"]
+minimal = ["git", "zsh"]

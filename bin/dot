@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+#
+# dot -- the dotfiles CLI.
+#
+# Three verbs, in a hardcoded case statement. A module CANNOT add a verb: if
+# one needs a command, it ships a script in its home/.local/bin/. v1 grew a
+# 84-line verb table with five consumers that drifted out of sync, and this
+# case statement is the deliberate refusal to start down that road again.
+
+set -euo pipefail
+
+# shellcheck source=../lib/dot.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/dot.sh"
+
+usage() {
+  cat <<'EOF'
+usage: dot <command> [options]
+
+  apply     Install packages, link config files, run module hooks.
+              --dry-run   Show every intended change, make none.
+  config    Open the config file in $EDITOR.
+              --init      Create it for the first time (runs the wizard).
+  doctor    Check this machine. Read-only; never changes anything.
+
+Config:  ~/.config/dotfiles/config.toml
+Repo:    see `dot doctor`
+EOF
+}
+
+# --- apply -----------------------------------------------------------------
+cmd_apply() {
+  [[ ${1:-} == --dry-run ]] && export DOT_DRY_RUN=1
+
+  # Phase 1. This installs dasel and fzf, which everything below depends on,
+  # so nothing may run before it.
+  heading 'Core packages'
+  if ! brew_load; then
+    die 'Homebrew is not installed. Run install.sh first.'
+  fi
+  brew_bundle "$DOT_ROOT/core/Brewfile" core
+
+  # Config. Generated on first run, read silently ever after -- a tool that
+  # re-asks a settled question feels broken.
+  if ! cfg_exists; then
+    if [[ -t 0 ]]; then
+      wizard_run
+    else
+      die "No config at $DOT_CONFIG and no terminal to ask. Run: dot config --init"
+    fi
+  fi
+
+  heading 'Core files'
+  fs_link_tree "$DOT_ROOT/core"
+  bash "$DOT_ROOT/core/apply.sh"
+
+  # One sudo prompt up front, with a reason, beats several mid-run.
+  if modules_want_sudo && [[ $DOT_DRY_RUN != 1 ]]; then
+    heading 'Administrator access'
+    say 'A module needs sudo (macOS system defaults). Asking once, now.'
+    sudo -v
+  fi
+
+  local name
+  while IFS= read -r name; do
+    heading "Module: $name"
+    module_apply "$name"
+  done < <(modules_enabled)
+
+  heading 'Summary'
+  fs_report
+  [[ $DOT_DRY_RUN == 1 ]] && dim 'Dry run: nothing was changed.'
+  return 0
+}
+
+# --- config ----------------------------------------------------------------
+cmd_config() {
+  if [[ ${1:-} == --init ]]; then
+    cfg_exists && die "$DOT_CONFIG already exists. Edit it with: dot config"
+    command -v fzf >/dev/null || die 'fzf is missing. Run `dot apply` first.'
+    wizard_run
+    return 0
+  fi
+
+  cfg_exists || die "No config yet. Create it with: dot config --init"
+  "${EDITOR:-vi}" "$DOT_CONFIG"
+}
+
+# --- doctor ----------------------------------------------------------------
+cmd_doctor() {
+  cfg_exists || die "No config at $DOT_CONFIG. Run: dot config --init"
+
+  heading 'Core'
+  bash "$DOT_ROOT/core/doctor.sh" || fail 'core checks failed'
+  fs_check_tree "$DOT_ROOT/core" || true
+
+  local name
+  while IFS= read -r name; do
+    heading "Module: $name"
+    module_doctor "$name" || true
+  done < <(modules_enabled)
+
+  # Links into the repo that no enabled module claims -- left behind by
+  # disabling a module or deleting a file. Reported, never deleted: the repo
+  # does not get to remove things from your home directory on its own.
+  heading 'Orphaned links'
+  local orphan found=0
+  while IFS= read -r orphan; do
+    [[ -z $orphan ]] && continue
+    found=1
+    warn "unclaimed  ${orphan/#$HOME/\~}"
+  done < <(fs_orphans)
+  if ((found)); then
+    dim 'Remove with: rm <path>'
+  else
+    ok 'none'
+  fi
+
+  heading 'Result'
+  if ((DOT_FAILURES > 0)); then
+    fail "$DOT_FAILURES problem(s) found"
+  else
+    ok 'Everything looks right.'
+  fi
+}
+
+# --- dispatch --------------------------------------------------------------
+case "${1:-}" in
+  apply)
+    shift
+    cmd_apply "$@"
+    ;;
+  config)
+    shift
+    cmd_config "$@"
+    ;;
+  doctor)
+    shift
+    cmd_doctor "$@"
+    ;;
+  -h | --help | help | '')
+    usage
+    ;;
+  *)
+    printf 'dot: unknown command %s\n\n' "$1" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

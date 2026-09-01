@@ -1,0 +1,8 @@
+# Library files are sourced, never executed standalone, so shellcheck cannot
+# follow the source path at lint time. lib/dot.sh is the single entrypoint.
+external-sources=true
+
+# SC1091: "not following sourced file" -- the paths are dynamic ($DOT_ROOT).
+# SC2016: single-quoted strings containing `backticks` are help text meant to
+#         be printed verbatim, not command substitutions.
+disable=SC1091,SC2016

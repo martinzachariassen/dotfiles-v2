@@ -1,0 +1,29 @@
+# Core packages -- phase 1, always installed, never optional.
+#
+# The ordering constraint that shapes this whole repo lives here: dasel and
+# fzf are installed by this file, and everything after phase 1 depends on
+# them. Nothing that runs before `brew bundle --file core/Brewfile` may use a
+# tool listed in it.
+#
+# Keep this list short. A package belongs here only if the dotfiles machinery
+# itself needs it, or if you would be annoyed to find it missing on any
+# machine. Everything else belongs to a module.
+
+# --- Required by the dotfiles machinery -------------------------------------
+brew "dasel"     # reads config.toml and every module.toml
+brew "fzf"       # the first-run module picker
+brew "git"       # cloning and updating this repo
+
+# --- Quality gates (pre-commit and CI run the same binaries) ----------------
+brew "bats-core" # test runner
+brew "shellcheck"
+brew "shfmt"
+
+# --- Baseline CLI -----------------------------------------------------------
+brew "bat"     # cat with syntax highlighting
+brew "eza"     # ls
+brew "fd"      # find
+brew "gh"      # GitHub CLI
+brew "jq"      # JSON, where dasel is overkill
+brew "ripgrep" # grep
+brew "zoxide"  # smarter cd

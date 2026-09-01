@@ -1,0 +1,54 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # macOS because the tests exercise BSD find, stat and readlink behaviour,
+    # and passing on GNU coreutils would prove nothing about the target.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tooling
+        run: brew install bats-core dasel shellcheck shfmt
+
+      - name: shellcheck
+        run: |
+          shellcheck -x install.sh bin/dot lib/*.sh core/*.sh \
+            modules/*/apply.sh modules/*/doctor.sh
+
+      - name: shfmt
+        run: |
+          shfmt -d -i 2 -ci install.sh bin/dot lib/*.sh core/*.sh \
+            modules/*/*.sh tests/helper.bash
+
+      - name: bats
+        run: bats tests/
+
+      - name: Size budget
+        # v2 exists because v1 reached ~20,700 lines. The budget is the only
+        # thing that pushes back on drift, so it is printed on every run and
+        # enforced. Going over is a signal to cut, not to raise the limit.
+        #
+        # TESTS ARE EXCLUDED, deliberately. A budget that counts tests is a
+        # budget that buys compliance by deleting them, which is the opposite
+        # of what this repo needs -- lib/fs.sh moves files in $HOME for a
+        # living. Test code is reported, never capped.
+        run: |
+          shipped=$(find . -path ./.git -prune -o -path ./tests -prune -o \
+            \( -name '*.sh' -o -name 'dot' \) -type f -print |
+            xargs wc -l | tail -1 | awk '{print $1}')
+          tests=$(find tests -type f | xargs wc -l | tail -1 | awk '{print $1}')
+          echo "Shipped shell: $shipped lines (budget 1500)"
+          echo "Tests:         $tests lines (uncapped)"
+          [ "$shipped" -le 1500 ] || {
+            echo "::error::Over the 1500-line budget. Cut something."
+            exit 1
+          }

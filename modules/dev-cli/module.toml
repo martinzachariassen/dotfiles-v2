@@ -1,0 +1,4 @@
+description = "Extra development CLI tools"
+default = false
+order = 40
+sudo = false

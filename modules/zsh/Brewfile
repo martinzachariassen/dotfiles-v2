@@ -1,0 +1,3 @@
+brew "starship"                  # prompt
+brew "zsh-autosuggestions"       # history-based inline suggestions
+brew "zsh-syntax-highlighting"   # must be sourced last, see .zshrc

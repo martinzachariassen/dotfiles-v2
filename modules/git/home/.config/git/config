@@ -1,0 +1,50 @@
+# Tracked git configuration.
+#
+# Identity is NOT here -- it lives in config.local, generated from
+# ~/.config/dotfiles/config.toml by this module's apply.sh. That split is the
+# whole templating strategy of this repo: use the tool's own include
+# mechanism, and keep the generated part to a handful of lines.
+
+[init]
+	defaultBranch = main
+
+[pull]
+	rebase = true
+
+[push]
+	default = current
+	autoSetupRemote = true
+
+[fetch]
+	prune = true
+
+[rebase]
+	autoStash = true
+
+[diff]
+	algorithm = histogram
+	colorMoved = default
+
+[merge]
+	conflictstyle = zdiff3
+
+[core]
+	excludesfile = ~/.config/git/ignore
+
+[column]
+	ui = auto
+
+[branch]
+	sort = -committerdate
+
+[alias]
+	s = status --short --branch
+	lg = log --oneline --graph --decorate -20
+	last = log -1 --stat
+	unstage = restore --staged
+	amend = commit --amend --no-edit
+
+# Machine-local: identity, signing keys, work overrides. Generated, untracked,
+# and last so it wins. Missing file is not an error.
+[include]
+	path = config.local
