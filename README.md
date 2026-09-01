@@ -80,7 +80,7 @@ contract, which is what makes that safe.
 
 ```
 modules/<name>/
-├── module.toml     required   description, order, sudo
+├── module.toml     required   description, sudo
 ├── Brewfile        optional   packages for this module
 ├── home/           optional   mirrors $HOME literally; leaf files are symlinked
 ├── apply.sh        optional   imperative, idempotent, run in its own process
@@ -98,7 +98,7 @@ the contract allows.
 
 ### Adding one
 
-Create the directory, write four lines of `module.toml`, add whatever of the
+Create the directory, write the two lines of `module.toml`, add whatever of the
 optional files you need. Nothing else to register.
 
 ## How files get linked
@@ -133,36 +133,43 @@ own config language, not in bash.
 ## Development
 
 ```sh
-bats tests/          # all tests
-shellcheck -x lib/*.sh bin/dot
-shfmt -d -i 2 -ci lib/*.sh bin/dot
+make check     # shellcheck, shfmt, bats, and the size budget
 ```
+
+That is the whole list, and it is exactly what CI runs -- the commands live in
+the `Makefile` and nowhere else. Individually: `make lint`, `make fmt` (rewrites
+files), `make test`, `make size`.
 
 Shipped shell code is capped at **1500 lines** and CI enforces it. Test code is
 uncapped -- `lib/fs.sh` moves files in `$HOME`, so it earns every test it has.
 Going over the cap is a signal to cut something, not to raise it.
 
+New to shell scripting? [`docs/bash-guide.md`](docs/bash-guide.md) explains
+every bash idiom this repo uses, one at a time.
+
 ### When something breaks
 
-A crash prints one line -- the file, the command and the status -- whether it
-happened in `dot` or inside a module hook run as its own process:
+A crash prints one line -- the file, the line, the command and the status --
+whether it happened in `dot` or inside a module hook run as its own process:
 
 ```
-✗ modules/macos-defaults/apply.sh: defaults write com.apple.dock autohide -bool true (exit 1)
+✗ modules/macos-defaults/apply.sh:24: defaults write com.apple.dock autohide -bool true (exit 1)
 ```
 
-There is no line number on purpose: for a failure inside a function bash 3.2
-reports the function's *definition* line, and a confidently wrong number is
-worse than none. When one line is not enough, hooks are ordinary scripts:
+When one line is not enough, hooks are ordinary scripts:
 
 ```sh
 bash -x modules/git/apply.sh
 ```
 
-### Bash 3.2
+### Bash 5
 
-macOS ships bash **3.2.57** (2007) and this repo installs no other bash, so
-every `#!/usr/bin/env bash` here resolves to it. That rules out associative
-arrays (`declare -A`), `mapfile`/`readarray`, `${x,,}` and `BASHPID`. A test in
-`tests/dot.bats` greps the shipped code for these, because the last one to slip
-through failed only at runtime, on a path no test covered.
+The repo targets bash **5**. macOS still ships 3.2.57 from 2007 as `/bin/bash`
+and never updates it, so `install.sh` runs `brew install bash` before anything
+else in the repo starts, `core/Brewfile` keeps it managed afterwards, and
+`bin/dot` re-execs itself into it if it somehow started under the old one.
+
+That is one Homebrew package in exchange for associative arrays, `mapfile`, and
+-- the reason it was worth doing -- correct line numbers in the crash report
+above. Bash 3.2 names a function's *definition* line rather than the failing
+one, so the number used to be left out entirely as worse than nothing.
