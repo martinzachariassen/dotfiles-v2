@@ -10,5 +10,5 @@
 # work happens rather than silently skipped.
 
 [profiles]
-personal = ["git", "zsh", "dev-cli", "macos-defaults"]
+personal = ["git", "zsh", "dev-cli", "apps", "containers", "macos-defaults"]
 minimal = ["git", "zsh"]

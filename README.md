@@ -93,8 +93,17 @@ Within a module the order is fixed: **Brewfile → links → apply.sh**, so
 
 `modules/git` is config plus a small generator, `modules/zsh` is packages plus
 config, `modules/macos-defaults` is purely imperative with no files at all, and
-`modules/dev-cli` is nothing but a Brewfile. Between them they show every shape
-the contract allows.
+`modules/dev-cli` and `modules/apps` are nothing but a Brewfile. Between them
+they show every shape the contract allows.
+
+| Module | What it is |
+|---|---|
+| `git` | config, plus a generator for the machine-local identity |
+| `zsh` | XDG layout, aliases, PATH, starship, zellij |
+| `dev-cli` | tools that are not baseline: gitleaks, lazygit, mise, claude-code |
+| `apps` | GUI casks and fonts: 1Password, Ghostty, Raycast, … |
+| `containers` | [Docker via colima](modules/containers/README.md), no Docker Desktop |
+| `macos-defaults` | Dock, Finder, keyboard, screenshots |
 
 ### Adding one
 
@@ -140,9 +149,17 @@ That is the whole list, and it is exactly what CI runs -- the commands live in
 the `Makefile` and nowhere else. Individually: `make lint`, `make fmt` (rewrites
 files), `make test`, `make size`.
 
-Shipped shell code is capped at **1500 lines** and CI enforces it. Test code is
-uncapped -- `lib/fs.sh` moves files in `$HOME`, so it earns every test it has.
-Going over the cap is a signal to cut something, not to raise it.
+Shell code is capped, and CI enforces it:
+
+| What | Cap | Why that shape |
+|---|---|---|
+| The engine: `install.sh`, `bin/dot`, `lib/`, `core/` | **1300 lines** | It is finished. Linking a file and reading a config do not get harder as you own more things. |
+| Each module's `apply.sh` + `doctor.sh` | **150 lines** | Enough for a module, not enough for a subsystem. |
+| The number of modules, and their sum | uncapped | This is the axis the repo is supposed to grow along. |
+| Tests | uncapped | `lib/fs.sh` moves files in `$HOME`, so it earns every test it has. |
+
+Going over is a signal to cut something or move it, not to raise the number.
+`make size` prints all of it.
 
 New to shell scripting? [`docs/bash-guide.md`](docs/bash-guide.md) explains
 every bash idiom this repo uses, one at a time.

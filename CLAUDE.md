@@ -10,16 +10,36 @@ All code, comments, commit messages and docs are in **English**.
 
 ## The size budget
 
-Shipped shell code is capped at **1500 lines**; CI fails over it. Tests are
-uncapped and excluded from the count. `make size` prints both.
+Two caps, enforced by `make size` in CI:
 
-The `Makefile` is not a `*.sh` file and so is not counted. That is not a
-loophole to route logic through: it holds the check commands and nothing else,
-because anything with logic in it belongs in `lib/`, where shellcheck and the
-tests can see it.
+- **The engine -- `install.sh`, `bin/dot`, `lib/`, `core/` -- is capped at
+  1300 lines.** This is the part v1 rotted in, and it is finished. Linking a
+  file, reading a config and running a hook do not get harder as you own more
+  things, so growth here has to be a deliberate act.
+- **Each module's shell is capped at 150 lines**, counted per directory. The
+  sum across modules is reported and *not* capped, and neither is the number of
+  modules.
 
-v1 reached ~20,700 lines. Going over the cap means cutting something, not
-raising the number. If you cannot find anything to cut, that is the finding.
+Tests are uncapped and excluded from both. The `Makefile` is not a `*.sh` file
+and so is not counted either -- that is not a loophole to route logic through:
+it holds the check commands and nothing else, because anything with logic in it
+belongs in `lib/`, where shellcheck and the tests can see it.
+
+**Why it is two numbers and not one.** It was a single 1500-line cap, which was
+right about the danger and wrong about where it lives. At 1461 lines the engine
+was 1240 of them and three modules were the other 221, so the next module with
+hooks would have failed CI -- and the only way to pass would have been deleting
+working engine code to make room for a Brewfile and a doctor. A rule that tells
+you to break the tool because you bought a laptop accessory is a rule that will
+be ignored the first time it fires, and a cap nobody respects is worse than no
+cap. Splitting it keeps the pressure where the failure mode actually is.
+
+**What has not changed:** going over means cutting something, or moving it to
+where it belongs. It does not mean raising the number. If you cannot find
+anything to cut, that is the finding. A module that wants more than 150 lines
+is either two modules, or one whose logic belongs in the engine -- and if it
+belongs in the engine, it has to fit in the engine's budget, where something
+else will have to go.
 
 ## Load-bearing decisions
 

@@ -1,2 +1,2 @@
-description = "zsh with XDG layout, aliases, and PATH"
+description = "zsh with XDG layout, aliases, PATH, prompt and multiplexer"
 sudo = false

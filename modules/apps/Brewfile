@@ -1,0 +1,43 @@
+# GUI applications and the fonts they render with.
+#
+# Casks, not formulae: Homebrew downloads the .app (or the .ttf) and puts it
+# where macOS looks. `brew bundle` handles both from the same file, so a GUI
+# app needs no machinery beyond this line -- which is why this is one module
+# and not one per app.
+#
+# The cut between this module and dev-cli is role, not packaging format: a
+# thing with a window or a menu bar item goes here, a thing you type goes
+# there. That is why `claude-code` is a cask living in dev-cli, and why the
+# one CLI below sits next to the app it belongs to rather than on its own.
+#
+# What belongs here: something you would notice missing on the first day of a
+# new machine. Everything else is a thing you install when you next want it,
+# and uninstall without editing a repo.
+#
+# The fonts are not a separate module because nothing enables them alone: they
+# exist for the terminal in the first section. Splitting them out would create
+# a module that is always on whenever this one is.
+
+# --- Daily drivers ----------------------------------------------------------
+cask "1password"     # SSH agent and git commit signing
+cask "1password-cli" # op; the SSH agent needs the app, not just this
+cask "ghostty"       # terminal
+cask "raycast"       # Spotlight replacement
+cask "claude"        # Claude desktop app
+cask "bruno"         # API client; local files, no account
+cask "spotify"
+
+# --- Menu bar and system ----------------------------------------------------
+# @beta is a versioned cask token, not a suffix Homebrew ignores: it tracks
+# Ice's beta channel and will not upgrade into the stable `jordanbaird-ice`.
+# Switching channels means uninstalling one and installing the other.
+cask "jordanbaird-ice@beta" # menu bar manager
+cask "stats"                # resource monitor in the menu bar
+cask "pearcleaner"          # uninstaller that finds the leftovers
+
+# --- Fonts ------------------------------------------------------------------
+# Both builds, deliberately. The Nerd Font is patched with the icon glyphs
+# Ghostty, zellij's bar and the starship prompt draw with; the plain one keeps
+# an editor on the stock metrics the font was designed for.
+cask "font-jetbrains-mono"           # editors (unpatched)
+cask "font-jetbrains-mono-nerd-font" # terminals (patched, has the glyphs)

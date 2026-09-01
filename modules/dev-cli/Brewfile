@@ -1,15 +1,20 @@
 # Development tooling beyond the baseline in core/Brewfile.
 #
 # A packages-only module: no home/, no apply.sh. The whole module is this file
-# plus four lines of metadata, which is the point -- adding a set of tools
+# plus two lines of metadata, which is the point -- adding a set of tools
 # should not require inventing any structure.
+#
+# Short on purpose. A tool earns a line here by being one you would install by
+# hand on a fresh machine within the first week; anything you reach for twice a
+# year is `brew install` when you need it, not a thing every machine carries.
+# (`gh` is not here because core/Brewfile already has it.)
 
-brew "difftastic"  # structural diff
-brew "git-delta"   # pager for git diff
-brew "gitleaks"    # secret scanning
-brew "hyperfine"   # benchmarking
-brew "lazygit"     # git TUI
-brew "mise"        # language runtimes (brew owns CLIs, mise owns runtimes)
-brew "sd"          # sed, for the common case
-brew "tlrc"        # tldr pages
-brew "yq"          # YAML
+brew "gitleaks" # secret scanning
+brew "lazygit"  # git TUI
+brew "mise"     # language runtimes (brew owns CLIs, mise owns runtimes)
+
+# A cask, because that is how Anthropic ships it -- but it is a command you
+# type, not a window you click, so it belongs with the CLI tools rather than
+# in modules/apps. `cask` and `brew` mean "where Homebrew gets it", and this
+# repo splits modules by what a thing is for.
+cask "claude-code" # Claude Code CLI

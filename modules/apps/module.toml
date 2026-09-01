@@ -1,0 +1,2 @@
+description = "GUI apps and fonts, installed as Homebrew casks"
+sudo = false
