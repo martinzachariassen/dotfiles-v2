@@ -41,7 +41,7 @@ until xcode-select -p >/dev/null 2>&1; do
   attempts=$((attempts + 1))
   if [ "$attempts" -ge "$max_attempts" ]; then
     echo
-    echo "Timed out waiting for Command Line Tools. Finish the dialog and re-run this script." >&2
+    echo "==> [1/4] Timed out waiting for Command Line Tools. Finish the dialog and re-run this script." >&2
     exit 1
   fi
   printf '.'
@@ -65,7 +65,7 @@ if [ -d "$REPO_DIR/.git" ]; then
   echo "==> [3/4] Updating existing checkout"
   git -C "$REPO_DIR" pull --ff-only
 elif [ -e "$REPO_DIR" ]; then
-  echo "$REPO_DIR exists and is not a git checkout. Move it aside first." >&2
+  echo "==> [3/4] $REPO_DIR exists and is not a git checkout. Move it aside first." >&2
   exit 1
 else
   echo "==> [3/4] Cloning"
