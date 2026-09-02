@@ -10,28 +10,17 @@
 palette = "catppuccin_latte"
 
 format = """
-$os$username$hostname\
+$username$hostname\
 $directory\
 $git_branch$git_state$git_status\
 $c$rust$golang$nodejs$bun$php$java$kotlin$haskell$python\
 $docker_context\
 $conda\
-$time\
-$cmd_duration\
 $line_break\
 $character"""
 
 add_newline = true
 command_timeout = 2000
-
-# install.sh refuses to run on anything but Darwin/arm64, so this is the
-# only OS symbol that can ever render here.
-[os]
-disabled = false
-style = "overlay0"
-
-[os.symbols]
-Macos = "󰀵 "
 
 # show_always = false: only appears for root or when $USER differs from the
 # login user -- e.g. a sudo'd shell or a container -- so a normal local
@@ -66,7 +55,7 @@ format = "[$path]($style)[$read_only]($read_only_style) "
 "Developer" = "󰲋 "
 
 [git_branch]
-symbol = " "
+symbol = " "
 style = "lavender"
 truncation_length = 32
 format = "on [$symbol$branch]($style) "
@@ -90,78 +79,65 @@ conflicted = "✗ "
 format = "[$all_status$ahead_behind]($style)"
 
 [c]
-symbol = " "
+symbol = " "
 style = "sapphire"
 format = "via [$symbol($version )]($style)"
 
 [rust]
-symbol = " "
+symbol = " "
 style = "red"
 format = "via [$symbol($version )]($style)"
 
 [golang]
-symbol = " "
+symbol = " "
 style = "sapphire"
 format = "via [$symbol($version )]($style)"
 
 [nodejs]
-symbol = " "
+symbol = " "
 style = "green"
 format = "via [$symbol($version )]($style)"
 
 [bun]
-symbol = " "
+symbol = " "
 style = "yellow"
 format = "via [$symbol($version )]($style)"
 
 [php]
-symbol = " "
+symbol = " "
 style = "mauve"
 format = "via [$symbol($version )]($style)"
 
 [java]
-symbol = " "
+symbol = " "
 style = "red"
 format = "via [$symbol($version )]($style)"
 
 [kotlin]
-symbol = " "
+symbol = " "
 style = "mauve"
 format = "via [$symbol($version )]($style)"
 
 [haskell]
-symbol = " "
+symbol = " "
 style = "lavender"
 format = "via [$symbol($version )]($style)"
 
 [python]
-symbol = " "
+symbol = " "
 style = "yellow"
 format = 'via [${symbol}${pyenv_prefix}(${version} )(\($virtualenv\) )]($style)'
 
 [docker_context]
-symbol = " "
+symbol = " "
 style = "blue"
 format = "via [$symbol$context]($style) "
 
 [conda]
-symbol = " "
+symbol = " "
 style = "sapphire"
 format = "via [$symbol$environment ]($style)"
 ignore_base = false
-
-[time]
-disabled = false
-time_format = "%R"
-style = "overlay1"
-format = "at [$time]($style) "
-
-[cmd_duration]
-min_time = 2_000
-show_milliseconds = true
-show_notifications = true
-min_time_to_notify = 45000
-format = "took [$duration](peach) "
 
 # The format string ends with $line_break$character; disabling this collapses
 # that onto one line and the prompt character stops sitting at column 0.
