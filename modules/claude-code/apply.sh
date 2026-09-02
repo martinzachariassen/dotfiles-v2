@@ -7,6 +7,11 @@
 # configured, so it is merged with jq rather than written whole -- the same
 # shape as the git module's config.local, minus the "generated" header:
 # settings.json is not this module's file to own, just one key inside it.
+#
+# jq is not guarded for. It comes from this module's own Brewfile, and the
+# driver skips apply.sh outright when a module's Brewfile fails -- that is the
+# one promise module_apply makes. Before the cask moved here, jq was dev-cli's
+# and this hook had to warn and skip, because dev-cli runs later.
 set -euo pipefail
 source "${DOT_ROOT:?}/lib/dot.sh"
 
@@ -15,15 +20,6 @@ script="$HOME/.claude/statusline.sh"
 
 if [[ $DOT_DRY_RUN == 1 ]]; then
   info "write   ~/.claude/settings.json (.statusLine)"
-  exit 0
-fi
-
-# jq itself is owned by dev-cli, not this module. Modules run alphabetically,
-# so on a machine that has never run `dot apply`, claude-code goes before
-# dev-cli and jq may not exist yet -- the recoverable half of that is to skip
-# and say so, the same shape as git/apply.sh waiting on 1Password.
-if ! command -v jq >/dev/null 2>&1; then
-  warn 'jq is not installed yet -- re-run `dot apply` to wire the status line'
   exit 0
 fi
 

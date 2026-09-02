@@ -11,13 +11,7 @@
 
 brew "gh"       # GitHub CLI
 brew "gitleaks" # secret scanning
-brew "jq"       # JSON on the command line -- modules/claude-code/home/.claude/statusline.sh depends on it
+brew "jq"       # JSON on the command line
 brew "lazygit"  # git TUI
 brew "mise"     # language runtimes (brew owns CLIs, mise owns runtimes)
 brew "zoxide"   # smarter cd
-
-# A cask, because that is how Anthropic ships it -- but it is a command you
-# type, not a window you click, so it belongs with the CLI tools rather than
-# in modules/apps. `cask` and `brew` mean "where Homebrew gets it", and this
-# repo splits modules by what a thing is for.
-cask "claude-code" # Claude Code CLI

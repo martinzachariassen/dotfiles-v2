@@ -1,0 +1,16 @@
+# Claude Code: the CLI, and the one tool its status line shells out to.
+#
+# A cask, because that is how Anthropic ships it -- `cask` and `brew` say where
+# Homebrew gets a thing, never what it is for. What matters is that both halves
+# live here: the package on this line and the statusLine wiring in apply.sh.
+# With the cask in dev-cli instead, enabling this module alone linked a status
+# line for a CLI that was never installed.
+#
+# jq is listed here AND in modules/dev-cli/Brewfile, deliberately. Modules run
+# alphabetically and cannot depend on each other, and claude-code sorts before
+# dev-cli -- so borrowing dev-cli's copy meant apply.sh had to warn and skip on
+# a fresh machine. `brew bundle` is idempotent; a repeated line is cheaper than
+# an ordering rule the driver has no way to express.
+
+cask "claude-code" # the CLI itself
+brew "jq"          # home/.claude/statusline.sh parses its stdin with it

@@ -5,8 +5,10 @@
 set -euo pipefail
 source "${DOT_ROOT:?}/lib/dot.sh"
 
-# jq ships with dev-cli, not this module -- see the Brewfile comment there.
-command -v jq >/dev/null 2>&1 || fail 'jq is not installed -- statusline.sh depends on it (dev-cli module)'
+# Checked even though this module's Brewfile installs it: doctor reports on the
+# machine as it is now, and a `brew uninstall jq` leaves the bar rendering
+# nothing with no error printed anywhere.
+command -v jq >/dev/null 2>&1 || fail 'jq is not installed -- statusline.sh depends on it (run: dot apply)'
 
 dest="$HOME/.claude/settings.json"
 script="$HOME/.claude/statusline.sh"

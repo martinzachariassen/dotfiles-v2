@@ -18,6 +18,31 @@ Lowercase names matching the directory. **150 lines of shell per directory.** A
 module that wants more is two modules, or one whose logic belongs in the engine
 -- where something else must go to make room.
 
+## Two shapes, one contract
+
+The driver knows only "a directory that can be enabled". To a reader the
+directories are two populations, and mixing them up is what makes `modules/`
+feel vague:
+
+- **Tool modules** manage a tool's configuration -- `home/`, hooks, or both.
+  Enabling one hands that tool to the repo.
+- **Package sets** are a Brewfile and nothing else: `apps`, `dev-cli`. Enabling
+  one installs software and changes no settings. Their `description` says
+  `Packages:` so the wizard and `dot doctor` say which you picked.
+
+Nothing enforces this and nothing should -- a flag or a second registry would
+buy a distinction the driver has no use for. It already prints `packages only`
+for the second shape (`lib/modules.sh`), derived from the absence of `home/` and
+`apply.sh` rather than recorded anywhere.
+
+**A module that owns a tool's config owns its `Brewfile` line.** That is what
+keeps the two populations from bleeding: the moment something in a package set
+grows a config file, it leaves for its own module and takes its package with
+it, or enabling that module gets you half a tool. Repeating a `brew` line
+across two modules is fine -- `brew bundle` is idempotent, and it is the only
+way to say "I need this too" where modules run alphabetically and cannot depend
+on each other.
+
 `remove.sh` exists for one gap: the uninstall sweep only sees links pointing
 into `$DOT_ROOT`. Links to targets outside the repo (`containers`) and
 generated real files (`git`) must clean up after themselves. A fourth hook

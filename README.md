@@ -105,21 +105,40 @@ modules/<name>/
 Within a module the order is fixed: **Brewfile → links → apply.sh**, so
 `apply.sh` can always assume its packages and config files are in place.
 
-`modules/git` is config plus a small generator, `modules/zsh` is packages plus
-config, `modules/macos-defaults` is purely imperative with no files at all, and
-`modules/dev-cli` and `modules/apps` are nothing but a Brewfile. Between them
-they show every shape the contract allows.
+One contract, two things people use it for. Every module is the same directory
+shape to the driver, but what *enabling* one means to you splits in two, and it
+is worth knowing which you are turning on:
 
-| Module | What it is |
+**Tool modules** manage a tool's configuration. Enabling one hands that tool to
+the repo, and the module installs the tool as well -- config and package are
+never split across two modules, so a module is never half-enabled.
+
+| Tool module | What it manages |
 |---|---|
 | `git` | config, plus a generator for the machine-local identity |
 | `ssh` | client config; keys stay in 1Password's agent |
 | `zsh` | XDG layout, aliases, PATH, `$EDITOR`, starship, zellij |
-| `dev-cli` | tools that are not baseline: gitleaks, lazygit, mise, claude-code |
-| `apps` | GUI casks and fonts: 1Password, Raycast, VS Code, … |
-| `cmux` | Ghostty config cmux reads; keeps Option native for AA/AE/OE |
+| `cmux` | the terminal, plus the Ghostty config it reads: Option stays native for AA/AE/OE |
+| `claude-code` | the CLI, plus the status line it renders |
 | `containers` | [Docker via colima](modules/containers/README.md), no Docker Desktop |
-| `macos-defaults` | Dock, Finder, keyboard, screenshots |
+| `macos-defaults` | Dock, Finder, keyboard, screenshots -- imperative, no files at all |
+
+**Package sets** are a Brewfile and nothing else: a shopping list for tools this
+repo installs but does not configure. Enabling one installs software; it changes
+no settings and links no files. `dot apply` labels them `packages only` as it
+goes. A tool here that ever grows a config file leaves for a module of its own,
+and takes its Brewfile line with it.
+
+| Package set | What it installs |
+|---|---|
+| `dev-cli` | tools that are not baseline: gitleaks, lazygit, mise, zoxide |
+| `apps` | GUI casks and fonts: 1Password, Raycast, VS Code, … |
+
+The split is descriptive, not enforced -- there is no flag and no second
+registry, because the shapes are the same to the driver and only differ to the
+reader. `modules/git` (config plus a generator), `modules/zsh` (packages plus
+config), `modules/macos-defaults` (imperative, no files) and `modules/apps`
+(Brewfile only) between them show every shape the contract allows.
 
 ### Adding one
 

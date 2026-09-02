@@ -7,8 +7,13 @@
 #
 # The cut between this module and dev-cli is role, not packaging format: a
 # thing with a window or a menu bar item goes here, a thing you type goes
-# there. That is why `claude-code` is a cask living in dev-cli, and why the
-# one CLI below sits next to the app it belongs to rather than on its own.
+# there. That is why the one CLI below sits next to the app it belongs to
+# rather than on its own.
+#
+# Both are grab-bags, though, and a module of its own outranks either. A tool
+# whose config this repo manages ships its package from that module's Brewfile
+# -- claude-code and cmux both used to be listed away from their config, and
+# enabling either module got you half a tool.
 #
 # What belongs here: something you would notice missing on the first day of a
 # new machine. Everything else is a thing you install when you next want it,
@@ -26,7 +31,6 @@ cask "claude"        # Claude desktop app
 cask "bruno"         # API client; local files, no account
 cask "google-chrome" # browser
 cask "spotify"
-cask "cmux"
 
 # $EDITOR points at this (see modules/zsh/home/.zshenv), so the zsh module's
 # editor line and this cask are one decision in two files. The cask ships the

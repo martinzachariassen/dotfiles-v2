@@ -1,0 +1,11 @@
+# The terminal this module configures.
+#
+# Here rather than in modules/apps despite being a GUI app with a window: apps
+# is the grab-bag for casks with no config of their own, and this one has a
+# module. Enabling `cmux` must not link a cmux.json that nothing reads.
+#
+# No ghostty cask -- cmux embeds libghostty and reads home/.config/ghostty/
+# config itself. The Nerd Font that file names stays in modules/apps for the
+# reason given there: no single module owns it.
+
+cask "cmux"
