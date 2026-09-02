@@ -117,6 +117,7 @@ they show every shape the contract allows.
 | `zsh` | XDG layout, aliases, PATH, `$EDITOR`, starship, zellij |
 | `dev-cli` | tools that are not baseline: gitleaks, lazygit, mise, claude-code |
 | `apps` | GUI casks and fonts: 1Password, Raycast, VS Code, … |
+| `cmux` | Ghostty config cmux reads; keeps Option native for AA/AE/OE |
 | `containers` | [Docker via colima](modules/containers/README.md), no Docker Desktop |
 | `macos-defaults` | Dock, Finder, keyboard, screenshots |
 

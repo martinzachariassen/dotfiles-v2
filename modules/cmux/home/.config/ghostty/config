@@ -1,0 +1,8 @@
+# cmux embeds libghostty and reads this file for terminal input behaviour
+# (rendering settings only -- cmux's own UI lives in ~/.config/cmux/cmux.json).
+#
+# Left unset, cmux intercepts Option for Alt/Meta, which swallows the
+# Option-letter combos macOS uses for Norwegian AA/AE/OE (aa/ae/oe). Explicit
+# `false` keeps Option producing those characters everywhere, same as outside
+# the terminal.
+macos-option-as-alt = false
