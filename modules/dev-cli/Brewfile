@@ -1,8 +1,8 @@
 # Development tooling beyond the baseline in core/Brewfile.
 #
-# A packages-only module: no home/, no apply.sh. The whole module is this file
-# plus two lines of metadata, which is the point -- adding a set of tools
-# should not require inventing any structure.
+# No apply.sh: the whole module is this file plus two lines of metadata and a
+# home/ leaf, which is the point -- adding a set of tools should not require
+# inventing any structure.
 #
 # Short on purpose. A tool earns a line here by being one you would install by
 # hand on a fresh machine within the first week; anything you reach for twice a
