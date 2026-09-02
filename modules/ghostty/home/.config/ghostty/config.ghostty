@@ -1,0 +1,118 @@
+# Ghostty. https://ghostty.org/docs/config/reference
+#
+# NO TRAILING COMMENTS. `key = value  # note` is a parse error, so every
+# comment here sits on its own line. Same for a UTF-8 BOM: it makes Ghostty
+# report line 1 as an unknown field in an otherwise valid file.
+#
+# Defaults are not written down. `ghostty +show-config --default --docs` prints
+# what you get for free, and repeating it here is a line that rots silently the
+# day upstream changes its mind.
+#
+# An unknown key does NOT fail loudly. Ghostty raises a "Configuration Errors"
+# dialog, but macOS redacts the detail in the log as <private>, so you are told
+# how many errors there are and never which. doctor.sh runs
+# `ghostty +validate-config` for exactly that reason -- run it after editing.
+
+# --- Theme --------------------------------------------------------------------
+# Built in, not a palette file of our own. Ghostty ships the Catppuccin set
+# from iterm2-color-schemes, and those names are title-cased with spaces --
+# `catppuccin-mocha` is the name of a file you wrote yourself, not this.
+#
+# Both halves are mandatory in this form: `dark:` on its own does not parse.
+# Ghostty follows the macOS appearance and swaps between them.
+theme = dark:Catppuccin Mocha,light:Catppuccin Latte
+
+# --- Font ---------------------------------------------------------------------
+# The PATCHED build, installed by modules/apps. The plain `JetBrains Mono` next
+# to it in that Brewfile is the editor's copy, on the metrics the font was
+# drawn for; this one carries the icon glyphs zellij's bar and the starship
+# prompt need.
+font-family = JetBrainsMono Nerd Font
+font-size = 13
+font-feature = calt
+font-feature = liga
+
+# --- Window -------------------------------------------------------------------
+window-padding-x = 12
+window-padding-y = 12
+window-padding-balance = true
+
+# Two window defaults deliberately left unset, because both were considered:
+# `window-save-state` stays `default` rather than `always` -- zellij owns
+# session persistence, and restoring windows here too would multiply detached
+# sessions on every login. `window-inherit-working-directory` stays `true`; it
+# rides on the OSC 7 the shell integration below emits, and inside a zellij
+# session it does nothing either way (zellij never forwards the pane's cwd to
+# the terminal, zellij#3811).
+
+background-opacity = 0.97
+
+# `background-blur` is the documented name. `background-blur-radius` was the
+# real key through 1.0.x and is now a SILENT compatibility alias
+# (Config.zig: cli.compatibilityRenamed) -- it still parses, so a config using
+# it looks correct and validates while being undocumented. The value is an
+# intensity; bare `true` means 20.
+background-blur = 20
+
+# --- macOS --------------------------------------------------------------------
+macos-non-native-fullscreen = true
+
+# `right`, not `true`, and this is the setting worth the most care here.
+#
+# The LEFT Option key has to stay a macOS compose key or the Norwegian layout
+# loses every character that needs it -- [ ] { } | \ @ $ ~ -- along with the
+# dead keys. The RIGHT one becomes Alt, which everything running inside the
+# terminal wants: fzf's ALT-C, zellij's Alt+n and Alt+hjkl, zsh's alt-b and
+# alt-f word motions.
+#
+# `false` makes all of those unreachable. `true` breaks typing. Neither is a
+# trade worth making when the keyboard has two of the key.
+macos-option-as-alt = right
+
+# The Homebrew cask is `auto_updates true`, so `brew upgrade` will not touch
+# this app -- left alone, Ghostty installs its own updates and the version on
+# disk drifts from the one Homebrew thinks it put there. `check` notifies and
+# waits. Same call as `--no-upgrade` in lib/brew.sh: upgrading is a thing you
+# choose to do.
+auto-update = check
+
+# --- Cursor, mouse, clipboard ---------------------------------------------------
+cursor-style = bar
+cursor-style-blink = true
+mouse-hide-while-typing = true
+
+# `clipboard`, not `true`: matches zellij's copy_on_select, so a selection
+# behaves identically inside and outside a session.
+copy-on-select = clipboard
+
+# --- Shell integration ----------------------------------------------------------
+# `zsh` rather than `detect`: this repo installs exactly one shell, so there is
+# nothing to probe for.
+shell-integration = zsh
+
+# This key MERGES with the defaults -- an omitted feature keeps its default
+# value, so only the ones being turned on belong here. cursor, title and path
+# are already on; naming them would say nothing.
+#
+# ssh-env and ssh-terminfo (1.2.0) are the reason the line exists: without
+# them, ssh into a host that has never heard of xterm-ghostty and the keyboard
+# stops working properly at the far end. sudo is off by default; it keeps
+# TERMINFO across a sudo, which is the same problem one machine closer.
+shell-integration-features = sudo,ssh-env,ssh-terminfo
+
+# --- Scrollback -----------------------------------------------------------------
+# BYTES, not lines. The default is 10_000_000 (decimal MB, not MiB) and this is
+# ~100 MB; ANSI escapes count against it, so it buys rather less history than
+# the number suggests.
+#
+# Renamed to `scrollback-limit-bytes` after 1.3.x, with this spelling kept as an
+# alias. Leave it until the rename is in a release we run.
+scrollback-limit = 100000000
+
+# --- Keybindings ----------------------------------------------------------------
+# Tabs (cmd+t, cmd+w, cmd+1..8, cmd+9 = LAST tab not the ninth, cmd+shift+[ ]),
+# splits and reload (cmd+shift+,) are bound by default. Only additions belong
+# here -- a duplicate trigger silently overwrites whatever it shadows.
+keybind = cmd+k=clear_screen
+keybind = cmd+enter=toggle_fullscreen
+keybind = cmd+shift+period=inspector:toggle

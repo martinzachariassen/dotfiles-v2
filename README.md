@@ -115,8 +115,9 @@ they show every shape the contract allows.
 | `git` | config, plus a generator for the machine-local identity |
 | `ssh` | client config; keys stay in 1Password's agent |
 | `zsh` | XDG layout, aliases, PATH, `$EDITOR`, starship, zellij |
+| `ghostty` | the terminal: its cask, and the config it reads |
 | `dev-cli` | tools that are not baseline: gitleaks, lazygit, mise, claude-code |
-| `apps` | GUI casks and fonts: 1Password, Ghostty, Raycast, … |
+| `apps` | GUI casks and fonts: 1Password, Raycast, VS Code, … |
 | `containers` | [Docker via colima](modules/containers/README.md), no Docker Desktop |
 | `macos-defaults` | Dock, Finder, keyboard, screenshots |
 
