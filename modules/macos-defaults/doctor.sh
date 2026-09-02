@@ -2,10 +2,9 @@
 #
 # Verify the settings apply.sh wrote are still in place.
 #
-# This module needs a doctor precisely because its failure mode is silent: a
-# macOS update, a Settings pane, or another tool can quietly revert a value
-# and nothing announces it. Compare that to a missing symlink, which you find
-# out about the moment you use the thing.
+# This module earns a doctor because its failure mode is silent: a macOS
+# update, a Settings pane or another tool can revert a value and nothing
+# announces it. A missing symlink, by contrast, you notice on first use.
 
 set -euo pipefail
 source "${DOT_ROOT:?}/lib/dot.sh"

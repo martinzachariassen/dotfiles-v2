@@ -2,18 +2,15 @@
 #
 # There is nothing to undo here, and saying so out loud is the whole job.
 #
-# apply.sh writes system preferences with `defaults write`. It never read what
-# was there first, so the previous values exist nowhere -- not in this repo,
+# apply.sh never read the old values, so they exist nowhere -- not in the repo,
 # not in $DOT_STATE, not in macOS. `defaults delete` would not restore them
-# either: it drops the key and lets macOS fall back to Apple's factory value,
-# which is a different thing from what you had, and quietly presenting it as a
-# restore is worse than doing nothing.
+# either: it drops the key and macOS falls back to Apple's factory value, which
+# is a different thing from what you had. Presenting that as a restore is worse
+# than doing nothing.
 #
-# The real fix is not in this file. It is in apply.sh, which would have to read
-# every key before writing it and store the result -- and that means a state
-# file recording what the last run did, which this repo does not have on
-# purpose (CLAUDE.md, "the tool writes the config exactly once"). That is a
-# trade worth making deliberately or not at all. Until then: report and stop.
+# Fixing it properly means apply.sh recording every key before writing it --
+# a state file, which this repo does not have on purpose. A trade to make
+# deliberately or not at all. Until then: report and stop.
 
 set -euo pipefail
 source "${DOT_ROOT:?}/lib/dot.sh"

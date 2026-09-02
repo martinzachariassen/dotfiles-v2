@@ -27,7 +27,8 @@ SHFMT_FLAGS := -i 2 -ci
 # TWO budgets, not one. v1 reached ~20,700 lines and the single 1500-line cap
 # that replaced it was right about the danger and wrong about where it lives.
 #
-# The ENGINE -- install.sh, bin/dot, lib/, core/ -- is the part v1 rotted in.
+# The ENGINE -- install.sh, uninstall.sh, bin/dot, lib/, core/ -- is the part
+# v1 rotted in.
 # Its cap was 1300, a number derived from "the engine is finished". It is now
 # 2500 because that premise was retired on purpose: there is more the engine is
 # meant to do. That is a different reason from "we ran out of room", and it is
@@ -35,7 +36,7 @@ SHFMT_FLAGS := -i 2 -ci
 # for, never what it happens to weigh this week.
 #
 # What still holds the line is not this number. It is the hard limits in
-# CLAUDE.md: 7 files in lib/, 2 fields in module.toml, 60 lines of wizard,
+# CLAUDE.md: 7 files in lib/, 1 field in module.toml, 60 lines of wizard,
 # 3 verbs in bin/dot. Those constrain SHAPE, and shape is what rotted in v1 --
 # 2500 lines arranged as 13 files with two registries would be the same
 # disaster at a smaller line count.

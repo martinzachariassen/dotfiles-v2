@@ -10,15 +10,13 @@ source "${DOT_ROOT:?}/lib/dot.sh"
 #
 # A symlink looks tidier but breaks the CLI: bash sets BASH_SOURCE to the
 # symlink's own path, so bin/dot would look for lib/ next to ~/.local/bin and
-# find nothing. Resolving that needs a readlink loop inside bin/dot -- a
-# second copy of the one in lib/dot.sh, which then has to stay in sync.
+# find nothing. Resolving that needs a readlink loop inside bin/dot, a second
+# copy of the one in lib/dot.sh that then has to stay in sync. The shim
+# sidesteps it by exporting DOT_ROOT and exec'ing the real path, so exactly one
+# place knows where the repo is and every hook inherits it.
 #
-# The shim sidesteps it: it exports DOT_ROOT and exec's the real path, so
-# there is exactly one place that knows where the repo is, and every hook
-# inherits it. It also makes `bash modules/git/doctor.sh` work directly.
-#
-# This does not go through core/home/ because the file is generated, not
-# tracked -- its content depends on where you cloned the repo.
+# Generated rather than tracked in core/home/ because its content depends on
+# where you cloned the repo.
 bin_dir="$HOME/.local/bin"
 target="$bin_dir/dot"
 

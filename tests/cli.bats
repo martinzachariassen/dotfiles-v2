@@ -17,11 +17,14 @@ dot() { run "$DOT_ROOT/bin/dot" "$@"; }
 # Make the CORE checks pass, so a doctor test can isolate the one thing it is
 # about and the status cannot have come from somewhere else. What
 # core/doctor.sh looks for is a shim on PATH naming this checkout.
+#
+# Produced by running the real generator, not by printf'ing a lookalike. A
+# hand-written copy is a second definition of the shim format: change
+# core/apply.sh and the fixture keeps passing core/doctor.sh while every real
+# machine fails it, so the six doctor tests below would go on proving something
+# about a file the repo no longer writes.
 pass_core_checks() {
-  mkdir -p "$HOME/.local/bin"
-  printf '#!/usr/bin/env bash\nexport DOT_ROOT="%s"\nexec "$DOT_ROOT/bin/dot" "$@"\n' \
-    "$DOT_ROOT" >"$HOME/.local/bin/dot"
-  chmod +x "$HOME/.local/bin/dot"
+  DOT_DRY_RUN=0 bash "$DOT_ROOT/core/apply.sh" >/dev/null
   export PATH="$HOME/.local/bin:$PATH"
 }
 
@@ -135,6 +138,24 @@ pass_core_checks() {
   [[ $output != *"not executable"* ]]
 }
 
+@test "doctor: a stale module name is a failure, not a shrug" {
+  # doctor's job is to predict what will stop the next apply, and
+  # modules_require_known will. Reported rather than fatal because doctor is the
+  # read-only verb and has to reach the checks below this one -- so the risk is
+  # the opposite of apply's: a message that scrolls past under a green Result
+  # line. Both halves are asserted.
+  config_generate "A" "a@b.c" "$(printf 'git\ntypoo\n')"
+  pass_core_checks
+
+  run "$DOT_ROOT/bin/dot" doctor
+
+  [ "$status" -eq 1 ]
+  [[ $output == *"unknown module 'typoo'"* ]]
+  [[ $output != *"Everything looks right"* ]]
+  # It kept going: the per-module section for the name that IS real still ran.
+  [[ $output == *"Module: git"* ]]
+}
+
 @test "config: an unknown option is refused" {
   dot config --initt
   [ "$status" -ne 0 ]
@@ -147,4 +168,55 @@ pass_core_checks() {
   dot config --init
   [ "$status" -ne 0 ]
   [[ $output == *"already exists"* ]]
+}
+
+@test "config: with no config yet, points at --init instead of opening an editor" {
+  # The bare `dot config` path had no test at all, and its failure mode is
+  # $EDITOR opening an empty buffer at a path nothing reads -- you type a config,
+  # save it, and the tool ignores it because the wizard never ran.
+  EDITOR=false dot config
+  [ "$status" -ne 0 ]
+  [[ $output == *"dot config --init"* ]]
+}
+
+@test "config: opens \$EDITOR on the config file, and on nothing else" {
+  # Pins the two things that can be wrong here: which program is run, and which
+  # path it is handed. `${EDITOR:-vi}` unquoted would also split an EDITOR with
+  # arguments -- a real configuration -- so the fixture has one.
+  config_generate "A" "a@b.c" ""
+  printf '#!/usr/bin/env bash\nprintf "EDITED[%%s]\\n" "$@"\n' >"$DOT_TMP/fake-editor"
+  chmod +x "$DOT_TMP/fake-editor"
+
+  EDITOR="$DOT_TMP/fake-editor" dot config
+  [ "$status" -eq 0 ]
+  [ "$output" = "EDITED[$DOT_CONFIG]" ]
+}
+
+@test "apply: a dry run on a fresh machine does not run the wizard" {
+  # config_generate declines to write under DOT_DRY_RUN, so the wizard asked
+  # for a profile, a module list, a name, an email and a confirmation, then
+  # threw all five answers away -- a preview of a run that could not happen.
+  # The fzf stub is the tripwire: if the wizard is reached, it says so.
+  mkdir -p "$DOT_TMP/stub"
+  printf '#!/usr/bin/env bash\necho WIZARD-RAN\n' >"$DOT_TMP/stub/fzf"
+  chmod +x "$DOT_TMP/stub/fzf"
+
+  run env PATH="$DOT_TMP/stub:$PATH" "$DOT_ROOT/bin/dot" apply --dry-run
+
+  [ "$status" -ne 0 ]
+  [[ $output != *"WIZARD-RAN"* ]]
+  [[ $output == *"dot config --init"* ]]
+  # And not the misleading one: phase 1 was skipped on purpose, so there is no
+  # brew output above to check.
+  [[ $output != *"brew output above"* ]]
+  [ ! -f "$DOT_CONFIG" ]
+}
+
+@test "doctor: with no config, says how to make one rather than crashing" {
+  # Without the guard, doctor runs cfg_list against a file that is not there and
+  # the first thing the user sees is a dasel error.
+  run "$DOT_ROOT/bin/dot" doctor
+  [ "$status" -ne 0 ]
+  [[ $output == *"dot config --init"* ]]
+  [[ $output != *dasel* ]]
 }

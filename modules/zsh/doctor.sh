@@ -3,28 +3,24 @@
 # The price of the XDG layout, made loud.
 #
 # ~/.zshenv points ZDOTDIR at ~/.config/zsh, so that is where zsh reads .zshrc,
-# .zprofile, .zlogin and .zlogout from. Installers do not know that. A great
-# many of them append `export PATH=...` or `eval "$(tool init zsh)"` to
-# $HOME/.zshrc without looking, and with ZDOTDIR set, that file is never read
-# again. Nothing errors. The tool is simply absent from every shell, and the
-# line that would have fixed it sits in a file you have no reason to open.
+# .zprofile, .zlogin and .zlogout from. Installers do not know that: they append
+# `eval "$(tool init zsh)"` to $HOME/.zshrc, which is now never read. Nothing
+# errors -- the tool is simply absent from every shell, and the line that would
+# have fixed it sits in a file you have no reason to open.
 #
-# That is the entire reason this hook exists. A check earns its place only if
-# the thing it checks fails silently, and this is as silent as it gets:
-# fs_check_tree cannot see it (a stray .zshrc is a real file, not a link into
-# the repo) and neither can the orphan scan (nothing in modules/ ever claimed
-# that path).
+# As silent as a failure gets, and nothing generic can see it: a stray .zshrc is
+# a real file rather than a link into the repo, so fs_check_tree misses it, and
+# no module ever claimed that path, so the orphan scan misses it too.
 
 set -euo pipefail
 source "${DOT_ROOT:?}/lib/dot.sh"
 
 zdotdir="$DOT_CONFIG_HOME/zsh"
 
-# Checked first because it decides whether the loop below is right or exactly
-# backwards. ZDOTDIR is only in the environment when doctor was invoked from a
-# zsh that already read ~/.zshenv -- an empty value means "not observable from
-# here", not "unset", so it is not something to complain about. A value that
-# disagrees is: some other thing owns the shell, and $HOME/.zshrc is live.
+# ZDOTDIR is only in the environment when doctor was invoked from a zsh that
+# already read ~/.zshenv, so empty means "not observable from here" rather than
+# "unset" -- not something to complain about. A value that DISAGREES is: some
+# other thing owns the shell, and $HOME/.zshrc is live after all.
 if [[ -n ${ZDOTDIR:-} && $ZDOTDIR != "$zdotdir" ]]; then
   warn "zsh          ZDOTDIR is $ZDOTDIR, expected ${zdotdir/#$HOME/\~}"
 fi

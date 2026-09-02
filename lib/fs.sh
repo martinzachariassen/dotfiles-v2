@@ -1,61 +1,62 @@
 # shellcheck shell=bash
 #
-# The symlink engine: the correctness core of this repo. Everything else can
-# be rewritten on a whim; a bug in here loses files.
+# The symlink engine: the correctness core of this repo. Everything else can be
+# rewritten on a whim; a bug in here loses files.
 #
 # Two rules govern the whole design:
 #
 #   1. Directories are NEVER symlinked, only traversed. If ~/.config were a
-#      link into the repo, one module would own the entire tree and every
-#      other tool's files would vanish from view. Only leaf files are linked;
-#      parent directories are created as real directories.
+#      link into the repo, one module would own the entire tree and every other
+#      tool's files would vanish from view. Only leaf files are linked.
 #
-#   2. A real file is never destroyed. It is MOVED to the backup tree, so
-#      after a collision the file is in exactly one place -- not two, with no
-#      way to tell which one you have been editing.
+#   2. A real file is never destroyed. It is MOVED to the backup tree, so after
+#      a collision the file is in exactly one place -- not two, with no way to
+#      tell which one you have been editing.
 
-# Tallies for the end-of-run report.
+# Tallies for the end-of-run report. Apply-side only: the removal helpers below
+# keep no tally, because a driver-side counter could only ever report the
+# removals the DRIVER made. Module remove.sh hooks are separate processes, so
+# theirs would be missing from it -- and an undercount at the bottom of an
+# uninstall is worse than the per-line narration those helpers already print.
 DOT_N_LINKED=0
 DOT_N_RELINKED=0
 DOT_N_BACKED_UP=0
 DOT_N_UNCHANGED=0
-# Read by uninstall.sh rather than by fs_report: an apply removes nothing, so
-# this line is always 0 in the report that fs_report prints.
-DOT_N_REMOVED=0
 
-# Set lazily on the first collision so a clean run leaves no empty directory
-# behind. One directory per `dot apply` invocation.
-__DOT_BACKUP_DIR=''
-
-# Point __DOT_BACKUP_DIR at this run's backup directory, creating it on first
-# use. Callers read the variable; this prints nothing on purpose.
+# fs_backup_dir -- this run's backup directory, created on first use so a clean
+# run leaves no empty directory behind.
 #
-# Never call it as `$(fs_backup_dir)`: a command substitution is a subshell, so
-# the memoised assignment dies with it (see docs/bash-guide.md). Written that
-# way, every collision re-ran `date` -- scattering one run's backups over
-# several directories -- and fs_report lost the line saying where they went.
+# DERIVED FROM AN INHERITED ID, NOT MEMOISED, and that is the fix for two
+# separate bugs with the same root. Memoising into a variable meant the answer
+# could not survive a subshell -- called as `$(fs_backup_dir)`, every collision
+# re-ran `date` and scattered one run's backups across a directory per second.
+# Fixing that by assigning to a global fixed the subshell but not the PROCESS
+# boundary: a hook is its own process, so a file that containers/apply.sh moved
+# aside went into a directory the driver had never heard of, and the summary
+# reported no backups at all. DOT_RUN_ID is exported, so every process in the
+# run computes the same path without anyone having to remember it.
 fs_backup_dir() {
-  if [[ -z $__DOT_BACKUP_DIR ]]; then
-    __DOT_BACKUP_DIR="$DOT_STATE/backups/$(date +%Y%m%d-%H%M%S)"
-    [[ $DOT_DRY_RUN == 1 ]] || mkdir -p "$__DOT_BACKUP_DIR"
-  fi
+  local dir="$DOT_STATE/backups/$DOT_RUN_ID"
+  [[ $DOT_DRY_RUN == 1 ]] || mkdir -p "$dir"
+  printf '%s\n' "$dir"
 }
 
-# Whether anything was backed up this run (drives the closing hint).
-fs_backup_used() { [[ -n $__DOT_BACKUP_DIR ]]; }
+# Whether anything was moved aside this run -- by this process or by a hook it
+# ran. The directory on disk is the only evidence that crosses the process
+# boundary; the tally covers a dry run, where by definition there is none.
+fs_backup_used() {
+  ((DOT_N_BACKED_UP)) || [[ -d "$DOT_STATE/backups/$DOT_RUN_ID" ]]
+}
 
 # fs_pairs DIR -- emit "src<TAB>dst" for every leaf file under DIR/home.
 #
 # The single place that knows how a module's home/ tree maps onto $HOME, so
 # apply and doctor can never disagree about what is expected on disk.
-# `-type f` excludes symlinks by definition; the contract test enforces that
-# the repo contains none anyway.
 fs_pairs() {
   local dir=$1 home="$1/home" src rel
   [[ -d $home ]] || return 0
-  # -print0 and `read -d ''` separate paths with a zero byte instead of a
-  # newline -- the one character a filename cannot contain. See
-  # docs/bash-guide.md.
+  # -print0 / `read -d ''` separate paths with a zero byte, the one character a
+  # filename cannot contain -- so a path with a newline in it cannot split.
   while IFS= read -r -d '' src; do
     rel=${src#"$home"/}
     printf '%s\t%s\n' "$src" "$HOME/$rel"
@@ -91,16 +92,12 @@ fs_classify() {
 }
 
 # fs_link SRC DST -- make DST a symlink to SRC, whatever state it is in now.
-#
-# Idempotent: an already-correct link prints nothing and touches nothing, so
-# re-running `dot apply` on an unchanged machine is silent.
+# Idempotent: an already-correct link prints nothing and touches nothing.
 fs_link() {
   local src=$1 dst=$2 rel=${2#"$HOME"/} state backup what
 
   state=$(fs_classify "$src" "$dst")
 
-  # Already correct: the common case on a re-run, and the only one that both
-  # prints nothing and returns early.
   if [[ $state == ok ]]; then
     DOT_N_UNCHANGED=$((DOT_N_UNCHANGED + 1))
     return 0
@@ -112,21 +109,18 @@ fs_link() {
     missing) info "link    ~/$rel" ;;
     wrong-target | broken) info "relink  ~/$rel" ;;
     clobbered)
-      # "file" is a lie when it is a whole directory being moved into the
-      # backup tree, and that is the case worth naming precisely -- it is by
-      # far the bigger surprise of the two. The values are quoted because
-      # `file` is also a command name, which shellcheck reads an unquoted bare
-      # word as an attempt to run (SC2209).
+      # "file" is a lie when a whole directory is being moved aside, and that
+      # is by far the bigger surprise of the two. Quoted because `file` is also
+      # a command name, which shellcheck reads a bare word as (SC2209).
       if [[ -d $dst ]]; then what='directory'; else what='file'; fi
       info "backup  ~/$rel  (real $what in the way)"
       ;;
   esac
   [[ $DOT_DRY_RUN == 1 ]] || {
     # A real file is moved aside; a symlink carries no data, so replacing one
-    # needs no backup. Either way the link is created the same way afterwards.
+    # needs no backup.
     if [[ $state == clobbered ]]; then
-      fs_backup_dir
-      backup="$__DOT_BACKUP_DIR/$rel"
+      backup="$(fs_backup_dir)/$rel"
       mkdir -p "$(dirname "$backup")"
       mv "$dst" "$backup"
     else
@@ -163,30 +157,27 @@ fs_link_tree() {
 # fs_unlink DST -- remove a symlink this repo created.
 #
 # Narrower than `rm` by design: a real file at a path a module once owned is
-# left exactly where it is. Rule 2 at the top of this file says an apply never
-# destroys a real file, and an uninstall that did would make that promise good
-# only until the next command.
+# left where it is. Rule 2 above says an apply never destroys a real file, and
+# an uninstall that did would make that promise good only until the next
+# command.
 fs_unlink() {
   local dst=$1
   [[ -L $dst ]] || return 0
   info "unlink  ${dst/#$HOME/\~}"
   [[ $DOT_DRY_RUN == 1 ]] || rm -f "$dst"
-  DOT_N_REMOVED=$((DOT_N_REMOVED + 1))
 }
 
 # fs_discard DST -- remove a real file this repo generated.
 #
-# Generated files are the ones no symlink scan can find: ~/.local/bin/dot and
-# ~/.config/git/config.local are written, not linked, because their contents
-# depend on this machine. Callers must establish ownership first -- both of
-# those carry a line naming the repo, and both are checked before they get
-# here.
+# ~/.local/bin/dot and ~/.config/git/config.local are written, not linked --
+# their contents depend on this machine -- so no symlink scan can find them.
+# Callers must establish ownership first: both carry a line naming the repo,
+# and both are checked before they get here.
 fs_discard() {
   local dst=$1
   [[ -f $dst ]] || return 0
   info "remove  ${dst/#$HOME/\~}"
   [[ $DOT_DRY_RUN == 1 ]] || rm -f "$dst"
-  DOT_N_REMOVED=$((DOT_N_REMOVED + 1))
 }
 
 # fs_check_tree DIR -- read-only drift report for one module.
@@ -201,9 +192,9 @@ fs_check_tree() {
       missing) warn "not linked      ~/$rel" ;;
       wrong-target) warn "wrong target    ~/$rel" ;;
       clobbered)
-        # The same lie as fs_link's, one verb over. These labels are a
-        # 16-character column, which "real directory" fills exactly -- that is
-        # why the column widened rather than the word shrinking to "dir".
+        # These labels are a 16-character column, which "real directory" fills
+        # exactly -- that is why the column widened rather than the word
+        # shrinking to "dir".
         if [[ -d $dst ]]; then
           warn "real directory  ~/$rel"
         else
@@ -234,26 +225,28 @@ fs_report() {
     say "${summary:2}"
   fi
 
+  # The path, not a variable this process may never have set -- the point of
+  # the change is that a hook's backups get reported by the driver too.
   if fs_backup_used; then
-    dim "Replaced files were moved to $__DOT_BACKUP_DIR"
+    dim "Replaced files were moved to $DOT_STATE/backups/$DOT_RUN_ID"
   fi
 }
 
 # fs_repo_links -- every symlink under $HOME that points into this repo.
 #
 # This is why v2 needs no "what did I apply last time" state file: the
-# filesystem already records every link, so the answer is derivable. Two
-# callers read it, and between them they are the whole reason it is separate
-# from fs_orphans -- doctor wants the ones nobody claims, an uninstall wants
-# all of them, and neither should own the walk.
+# filesystem already records every link, so the answer is derivable. Doctor
+# wants the ones nobody claims and an uninstall wants all of them, so the walk
+# lives here and fs_orphans is a filter over it -- neither verb gets its own
+# idea of which links belong to this repo.
 #
 # The filter on "points into $DOT_ROOT" is what keeps this safe to delete from.
 # A link you made yourself, to somewhere else, is not this repo's to remove --
-# which is also why the containers module has to name its docker plugin links
-# in its own remove.sh: those point into Homebrew's prefix, not into here.
+# which is also why containers/remove.sh has to name its docker plugin links:
+# those point into Homebrew's prefix, not into here.
 fs_repo_links() {
-  # `roots` is a hash map because its job is to collapse duplicates -- the same
-  # directory is named by every file a module puts in it.
+  # A hash map because its job is to collapse duplicates -- the same directory
+  # is named by every file a module puts in it.
   local -A roots=()
   local dir src dst link target
   local -a scan
@@ -261,11 +254,10 @@ fs_repo_links() {
   # Where to look comes from EVERY module, not just the enabled ones. It used
   # to come from the enabled set, which made the main case invisible: disabling
   # a module dropped its directory from the scan, so the links it left behind
-  # -- the main thing this is for -- were never looked at.
+  # were never looked at.
   #
-  # `while read` over the module list, not `for dir in $(...)`: the unquoted
-  # form word-splits, so a repo cloned into a path with a space in it scanned
-  # the wrong directories.
+  # `while read`, not `for dir in $(...)`: the unquoted form word-splits, so a
+  # repo cloned into a path with a space in it scanned the wrong directories.
   while IFS= read -r dir; do
     while IFS=$'\t' read -r src dst; do
       roots[$(dirname "$dst")]=1

@@ -72,15 +72,91 @@ EOF
   [[ $output == *"usage: dot"* ]]
 }
 
-@test "the shim records the checkout it was installed from" {
+@test "the shim records the checkout in the exact form its readers grep for" {
+  # Three files agree on one string and nothing used to hold them together.
+  # core/apply.sh WRITES `export DOT_ROOT="<path>"`; core/doctor.sh and
+  # uninstall.sh both `grep -qF 'DOT_ROOT="<path>"'` to decide whether the shim
+  # belongs to this checkout. The old assertion here was `grep -c "$DOT_ROOT"`,
+  # which passes for any shim mentioning the path in any form -- so dropping
+  # the quotes would keep this green while doctor started reporting a foreign
+  # checkout and the uninstaller stopped removing the file at all.
+  #
+  # Written as the readers' own expression so the test fails with them.
   DOT_DRY_RUN=0 bash "$DOT_ROOT/core/apply.sh" >/dev/null
-  run grep -c "$DOT_ROOT" "$HOME/.local/bin/dot"
-  [ "$output" -ge 1 ]
+  run grep -qF "DOT_ROOT=\"$DOT_ROOT\"" "$HOME/.local/bin/dot"
+  [ "$status" -eq 0 ]
+}
+
+@test "doctor and uninstall recognise the shim core/apply.sh just wrote" {
+  # The coupling itself, end to end: generator and both readers in one test.
+  # Neither reader is stubbed, so a change to any of the three has to keep the
+  # other two working.
+  DOT_DRY_RUN=0 bash "$DOT_ROOT/core/apply.sh" >/dev/null
+
+  run bash "$DOT_ROOT/core/doctor.sh"
+  [[ $output == *"dot         installed"* ]]
+  [[ $output != *"different checkout"* ]]
+}
+
+@test "a shim from another checkout is left alone, not claimed" {
+  # The other side of the same string. Ownership has to be provable, because
+  # the uninstaller deletes on the strength of it.
+  mkdir -p "$HOME/.local/bin"
+  printf '#!/usr/bin/env bash\nexport DOT_ROOT="/somewhere/else"\n' \
+    >"$HOME/.local/bin/dot"
+  chmod +x "$HOME/.local/bin/dot"
+
+  run bash "$DOT_ROOT/core/doctor.sh"
+  [[ $output == *"different checkout"* ]]
 }
 
 @test "an inherited DOT_ROOT is not overridden" {
   run bash -c "DOT_ROOT='$DOT_ROOT' bash -c 'source \"$DOT_ROOT/lib/dot.sh\"; echo \$DOT_ROOT'"
   [ "$output" = "$DOT_ROOT" ]
+}
+
+# A checkout at PATH, reached through PATH -- the shape a bad clone location
+# really has, rather than a DOT_ROOT pointing at nothing. Only lib/ is needed:
+# the guard runs before the first source, and nothing else is read at load time.
+checkout_at() {
+  local dir="$DOT_TMP/$1"
+  mkdir -p "$dir"
+  ln -s "$DOT_ROOT/lib" "$dir/lib"
+  printf '%s\n' "$dir"
+}
+
+@test "root: every character that survives quoting is refused" {
+  # One test, because the list IS the rule. Each of these is baked verbatim into
+  # a script the repo generates -- the shim, and the throwaway uninstall.sh
+  # execs into -- by an unquoted heredoc. A `"` ends the string early, so the
+  # throwaway becomes a syntax error and typing `remove` removes nothing at all;
+  # a backtick or $( ) is not a broken string but a command the generated script
+  # runs; a backslash escapes whatever follows into something else.
+  local bad dir
+  for bad in 'dot"files' 'dot`id`files' 'dot$(id)files' 'back\slash'; do
+    dir=$(checkout_at "$bad")
+    run env DOT_ROOT="$dir" bash -c 'source "$DOT_ROOT/lib/dot.sh"'
+    [ "$status" -ne 0 ] || {
+      echo "accepted a checkout path containing: $bad"
+      return 1
+    }
+    [[ $output == *"cannot be quoted safely"* ]]
+    # Named, not just described. "your path is bad" over a path you cannot see
+    # is not something you can act on.
+    [[ $output == *"$bad"* ]]
+  done
+}
+
+@test "root: an ordinary path with spaces or non-ASCII is left alone" {
+  # The failure mode that gets a guard like this deleted: refusing paths people
+  # actually have. A space was never the problem -- every use of $DOT_ROOT is
+  # already quoted, and quoting is exactly what the four characters above defeat.
+  local dir
+  dir=$(checkout_at 'my dotfiles æøå')
+
+  run env DOT_ROOT="$dir" bash -c 'source "$DOT_ROOT/lib/dot.sh"; ok loaded'
+  [ "$status" -eq 0 ]
+  [[ $output == *loaded* ]]
 }
 
 # --- Failure reporting ------------------------------------------------------

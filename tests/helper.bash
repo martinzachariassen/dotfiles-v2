@@ -15,6 +15,15 @@ setup_sandbox() {
   export DOT_DRY_RUN=0
   mkdir -p "$HOME"
 
+  # Pinned, not inherited. lib/dot.sh derives DOT_CONFIG_HOME and
+  # DOT_STATE_HOME from these, and core/apply.sh runs `mkdir -p` on both -- so
+  # on a developer machine that exports either of them, a test doing a real
+  # apply created directories OUTSIDE the sandbox. Overriding $HOME alone is
+  # not enough to contain a test suite; anything $HOME is only a default for
+  # has to be pinned too.
+  export XDG_CONFIG_HOME="$HOME/.config"
+  export XDG_STATE_HOME="$HOME/.local/state"
+
   # The library is loaded from the real repo; only $HOME is fake.
   DOT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   export DOT_ROOT
@@ -22,9 +31,14 @@ setup_sandbox() {
   source "$DOT_ROOT/lib/dot.sh"
 
   # Counters are globals; reset them so tests do not see each other's tallies.
-  DOT_N_LINKED=0 DOT_N_RELINKED=0 DOT_N_BACKED_UP=0 DOT_N_UNCHANGED=0 DOT_N_REMOVED=0
+  DOT_N_LINKED=0 DOT_N_RELINKED=0 DOT_N_BACKED_UP=0 DOT_N_UNCHANGED=0
   DOT_FAILURES=0 DOT_WARNINGS=0
-  __DOT_BACKUP_DIR=''
+
+  # A fresh id per test, so one test's backup directory is never mistaken for
+  # the next one's. DOT_STATE moves with the sandbox too, which makes this belt
+  # and braces -- but fs_backup_used answers from the filesystem now, and a
+  # shared id is exactly the kind of thing that would make it answer wrongly.
+  export DOT_RUN_ID="test-$BATS_TEST_NUMBER"
 }
 
 teardown_sandbox() {

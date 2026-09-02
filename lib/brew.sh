@@ -20,8 +20,8 @@ brew_load() {
 # and "this module has no packages" is a normal thing to be.
 brew_bundle() {
   local file=$1
-  # Separate statement on purpose: within a single `local`, $file is not yet
-  # assigned when the default for $label is expanded (shellcheck SC2318).
+  # Separate statement: within a single `local`, $file is not yet assigned when
+  # the default for $label is expanded (shellcheck SC2318).
   local label=${2:-$(basename "$(dirname "$file")")}
   [[ -f $file ]] || return 0
 

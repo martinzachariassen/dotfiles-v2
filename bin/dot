@@ -6,11 +6,10 @@
 #   dot <command> [options]
 #
 
-# The repo targets bash 5. macOS still ships 3.2 (from 2007) as /bin/bash, and
-# `#!/usr/bin/env bash` picks whichever comes first on PATH -- so a shell that
-# has not sourced Homebrew's shellenv would start this script under 3.2 and hit
-# obscure syntax errors deep inside the library. Re-exec into the right one
-# instead of failing later.
+# `#!/usr/bin/env bash` picks whichever bash comes first on PATH, and macOS
+# ships 3.2 (from 2007) as /bin/bash -- so a shell that has not sourced
+# Homebrew's shellenv would start this under 3.2 and hit obscure syntax errors
+# deep inside the library. Re-exec into the right one instead of failing later.
 if ((BASH_VERSINFO[0] < 5)); then
   if [[ -x /opt/homebrew/bin/bash ]]; then
     exec /opt/homebrew/bin/bash "$0" "$@"
@@ -40,9 +39,9 @@ usage: dot <command> [options]
   doctor    Check this machine. Read-only; never changes anything.
 
 EOF
-  # Printed, not baked into the quoted heredoc above: both paths are overridable
-  # -- DOT_CONFIG honours XDG_CONFIG_HOME and an explicit setting -- and a usage
-  # line naming the wrong file is worse than one naming no file at all.
+  # Printed, not baked into the quoted heredoc above: both paths are
+  # overridable, and a usage line naming the wrong file is worse than one
+  # naming no file at all.
   printf 'Config:  %s\n' "${DOT_CONFIG/#$HOME/\~}"
   printf 'Repo:    %s\n' "${DOT_ROOT/#$HOME/\~}"
   printf 'Remove:  bash uninstall.sh --dry-run   (in the repo; not a verb, on purpose)\n'
@@ -61,28 +60,46 @@ cmd_apply() {
     shift
   done
 
-  # Phase 1. This installs dasel and fzf, which everything below depends on,
-  # so nothing may run before it. Loads the CORE module, which is always enabled.
+  # Phase 1. Installs dasel and fzf, which everything below depends on, so
+  # nothing may run before it.
   heading 'Core packages'
   if ! brew_load; then
     die 'Homebrew is not installed. Run install.sh first.'
   fi
-  # Explicitly fatal, and explicitly said so. Bare, brew_bundle's `return 1`
-  # tripped `set -e` and the ERR trap reported "lib/brew.sh:44: return 1" --
-  # naming the library instead of the one thing worth knowing, which is that
-  # nothing below can run without dasel and fzf.
+  # Fatal, and explicitly so. Called bare, brew_bundle's `return 1` tripped
+  # `set -e` and the ERR trap reported "lib/brew.sh:44: return 1" -- naming the
+  # library instead of the one thing worth knowing.
   brew_bundle "$DOT_ROOT/core/Brewfile" core ||
     die 'Core packages did not install. Fix the brew errors above, then re-run.'
 
   # Config. Generated on first run, read silently ever after -- a tool that
   # re-asks a settled question feels broken.
   if ! cfg_exists; then
+    # Not under --dry-run. config_generate declines to write in a dry run, so
+    # the wizard would ask five questions and discard every answer -- a preview
+    # of a run that cannot happen. And on a machine that has never applied, the
+    # fzf check below would then die pointing at "the brew output above" from a
+    # phase 1 that was deliberately skipped.
+    if [[ $DOT_DRY_RUN == 1 ]]; then
+      die "No config at $DOT_CONFIG yet. Create it first: dot config --init"
+    fi
     [[ -t 0 ]] ||
       die "No config at $DOT_CONFIG and no terminal to ask. Run: dot config --init"
     command -v fzf >/dev/null ||
       die 'fzf is missing -- phase 1 did not complete. Check the brew output above.'
     wizard_run
   fi
+
+  # Before anything is touched, and in this order: a config dasel gave up on
+  # halfway through has no `enabled` key at all, so modules_require_known finds
+  # no unknown names and waves it through -- then apply reports "None enabled."
+  # and exits 0 over a machine it did nothing to. Refuse instead; the file is
+  # not saying what its author thinks it says.
+  local problems
+  problems=$(cfg_parse_problems)
+  [[ -z $problems ]] || die "$DOT_CONFIG did not parse:
+    $problems
+    edit:       $DOT_CONFIG"
 
   # Validated here, once, before anything is touched. modules_enabled cannot
   # report this itself: every caller reads it as `< <(modules_enabled)`, and
@@ -91,8 +108,6 @@ cmd_apply() {
 
   heading 'Core files'
   fs_link_tree "$DOT_ROOT/core"
-  # "$BASH" is this shell's own path, so a child script is guaranteed the same
-  # interpreter the driver is running under rather than whatever PATH resolves.
   # Folded rather than bare: bare, a warning from core would have exited 2 and
   # `set -e` would have killed the apply before a single module ran.
   fold_status 'core apply.sh failed' "$BASH" "$DOT_ROOT/core/apply.sh"
@@ -180,9 +195,7 @@ cmd_doctor() {
     # Deliberately not a count. DOT_FAILURES tallies the ✗ lines THIS process
     # printed, and a hook that found three problems arrives as one rolled-up
     # failure -- so "3 problem(s) found" sat underneath five ✗ marks and left
-    # you to work out which three. A summary you can misread is the bug, not
-    # the prose around it, which is why the warning branch below points rather
-    # than counts as well.
+    # you to work out which three. Both branches point rather than count.
     fail 'Problems found -- see the ✗ marks above.'
   elif ((DOT_WARNINGS > 0)); then
     # Neither `ok` nor `fail`. Nothing here will stop the next apply and the

@@ -218,12 +218,18 @@ in_strict_shell() {
   [ "$(modules_enabled | sort)" = "$(printf '%s\n' "$picked" | sort)" ]
 }
 
-@test "round trip: config_generate writes no name that modules_enabled rejects" {
+@test "round trip: every name the wizard writes is one apply will accept" {
+  # The assertion here used to be `output != *"unknown module"*`, which cannot
+  # fail: that string lives in bin/dot, which this test never runs, and
+  # modules_enabled is silent by construction. Ask the validator instead --
+  # modules_require_known is the function `dot apply` actually gates on.
   fzf() { cat; }
   config_generate "A" "a@b.c" "$(wizard_pick_modules "$(printf 'git\n')")"
-  run modules_enabled
+
+  run modules_require_known
   [ "$status" -eq 0 ]
-  [[ $output != *"unknown module"* ]]
+  # And nothing was rejected on the way through.
+  [ -z "$(modules_unknown)" ]
 }
 
 # --- Stale module names -----------------------------------------------------
@@ -244,7 +250,11 @@ in_strict_shell() {
     while IFS= read -r n; do :; done < <(modules_enabled_dirs)
   '
   [ "$status" -eq 0 ]
-  [[ $output != *"unknown module"* ]]
+  # TOTALLY silent, not "silent about one phrase". The old assertion looked for
+  # "unknown module", a string that lives in bin/dot and can never appear here,
+  # so any wording of a warning added to modules_enabled would have slipped past
+  # -- which is the entire failure this test is meant to prevent.
+  [ -z "$output" ]
 }
 
 @test "unknown: each stale name is listed exactly once" {

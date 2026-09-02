@@ -2,34 +2,33 @@
 #
 # Reading ~/.config/dotfiles/config.toml.
 #
-# There is deliberately no writer here. The config file is generated exactly
+# There is deliberately no general writer here. The config is generated exactly
 # once, by `dot config --init`, and belongs to the user from that moment on.
 # Every tool that can write TOML (dasel included) rebuilds the file from its
-# parsed form and drops comments in the process, so the only way to keep a
-# commented, hand-editable config honest is to never write it again.
-#
-# Changing which modules are enabled means editing the array. That is what
-# `dot config` opens your editor for.
+# parsed form and drops comments, so the only way to keep a commented,
+# hand-editable config honest is to never write it again.
 #
 # dasel v3 notes, verified against 3.11.2:
-#   * there is no -f flag any more; input arrives on stdin
+#   * no -f flag any more; input arrives on stdin
 #   * -i is the INPUT format, not in-place editing (which v3 removed)
-#   * a missing key is an error with exit status 1, which is how defaults work
-#   * -o yaml is used for everything here: it renders an array as one "- item"
-#     per line, and a scalar as itself. One output format means one set of
-#     quoting rules to undo, in __cfg_unquote below.
+#   * a missing key exits 1, which is how defaults work below
+#   * everything is read as -o yaml, scalars included: one output format means
+#     one set of quoting rules to undo, in __cfg_unquote
 
 cfg_exists() { [[ -f $DOT_CONFIG ]]; }
 
-# Undo the quoting dasel's YAML output adds.
+# Undo the quoting dasel's YAML output adds. YAML quotes only when leaving a
+# value bare would be ambiguous, so almost everything falls straight through;
+# the two cases that matter are an empty string ("") and a value containing
+# ": ", which YAML single-quotes to stop it reading as a mapping.
 #
-# YAML quotes a value only when leaving it bare would be ambiguous, so almost
-# everything arrives untouched and falls straight through:
-#
-#   Git configuration -> Git configuration     (bare)
-#   'x: y'            -> x: y                  (a colon would start a mapping)
-#   ""                -> (empty string)
-#   true, 3           -> true, 3               (bare)
+# YAML's other escapes are deliberately absent. A tab comes back as a literal
+# `\t` and a newline as a `|-` block, neither of which any setting this repo
+# reads can contain -- a git identity, an SSH key, a directory name, a number.
+# Adding them is also not the two-line change it looks like: these replacements
+# run in sequence, and they are correct only because `\"` and `\\` cannot alias
+# each other. A `\t` rule would rewrite the middle of a literal `\\t`, and
+# config_generate now supports backslashes on purpose.
 __cfg_unquote() {
   local v=$1
   case $v in
@@ -69,11 +68,9 @@ toml_list() {
   dasel -i toml -o yaml "$key" <"$file" 2>/dev/null | while IFS= read -r line; do
     # An empty array renders as the single line "[]".
     [[ $line == '[]' ]] && continue
-    # "- name" is one array element; strip the marker, then the same quoting
-    # rules apply as for a scalar.
     line=$(__cfg_unquote "${line#- }")
-    # `if`, not `&&`: a trailing `&&` that tests false on the LAST line leaves
-    # the loop -- and so the pipeline -- at status 1. See docs/bash-guide.md.
+    # `if`, not a trailing `&&`: a false test on the LAST line would leave the
+    # loop -- and so the whole pipeline -- at status 1. See CLAUDE.md.
     if [[ -n $line ]]; then printf '%s\n' "$line"; fi
   done
 }
@@ -83,17 +80,90 @@ toml_list() {
 cfg_get() { toml_get "$DOT_CONFIG" "$1" "${2:-}"; }
 cfg_list() { toml_list "$DOT_CONFIG" "$1"; }
 
+# cfg_parse_problems -- one line per sign that the config did not parse whole.
+# Empty output means it did. Callers pick the severity: apply refuses, doctor
+# reports.
+#
+# THE BUG THIS EXISTS FOR. dasel does not validate. On a malformed line it
+# stops, keeps everything it read up to that point, and EXITS 0 -- so a missing
+# comma in `enabled = [ "git", "zsh" "macos-defaults" ]` deletes the whole
+# [modules] table from the parsed document while `schema` above it still reads
+# fine. The old check queried `schema`, which is written by the generator ABOVE
+# all user-editable content, so it could never fail on a hand-edit.
+#
+# What that costs is not a wrong value. With no enabled modules, every link in
+# $HOME is unclaimed by definition, so `dot doctor` reports the user's entire
+# working setup as orphaned and closes with `Remove with: rm <path>` -- a
+# health check that tells you to delete your dotfiles because of a typo.
+# `dot apply` agrees, prints "None enabled.", and exits 0.
+#
+# Two checks, because a real TOML parser is a dependency this repo does not
+# have and neither check alone is enough:
+cfg_parse_problems() {
+  local -A seen=()
+  local name
+
+  while IFS= read -r name; do
+    seen[$name]=1
+  done < <(dasel -i toml -o yaml 'keys()' <"$DOT_CONFIG" 2>/dev/null | sed 's/^- //')
+
+  # 1. Every table the file declares must be visible. A parse that stopped
+  #    early cannot see the tables below where it stopped, and the file's own
+  #    `[header]` lines are the one record of what was meant to be there.
+  #
+  #    Only the top-level name is taken (`[settings.git]` -> settings), and it
+  #    is only ever COMPARED, never turned back into a selector -- which is
+  #    what keeps dasel's dash-is-subtraction problem out of this. The pattern
+  #    deliberately matches nothing exotic: a quoted or otherwise unusual table
+  #    name is skipped rather than guessed at, because a doctor that cries wolf
+  #    stops being read.
+  while IFS= read -r name; do
+    if [[ -z ${seen[$name]:-} ]]; then
+      printf 'declares [%s] but the parser cannot see it -- syntax error above that line\n' "$name"
+    fi
+  done < <(sed -n 's/^\[\[*\([A-Za-z0-9_-]\{1,\}\)[].].*/\1/p' "$DOT_CONFIG" | sort -u)
+
+  # 2. modules.enabled must be READABLE, which is not the same as non-empty.
+  #    `enabled = []` is exactly what the `none` profile writes and is valid;
+  #    a truncated config has no such key at all. That difference is the whole
+  #    point -- it separates "nothing is enabled" from "nothing could be read",
+  #    which are the two states the orphan report cannot tell apart on its own.
+  #
+  #    Guarded on [modules] being visible so a dropped table is reported once,
+  #    by the check above, with the cause rather than the symptom.
+  if [[ -n ${seen[modules]:-} ]] &&
+    ! dasel -i toml -o yaml 'modules.enabled' <"$DOT_CONFIG" >/dev/null 2>&1; then
+    printf 'has a [modules] table with no readable `enabled` list\n'
+  fi
+}
+# Residual, stated rather than hidden: a typo inside the LAST table in the file
+# drops only that table's remaining scalars, and nothing above notices. The
+# damage is bounded to those values -- a signing key that silently stops being
+# used, say -- and closing it needs a real parser.
+
 # --- The one writer --------------------------------------------------------
+
+# __cfg_quote VALUE -- VALUE as a TOML basic string, brackets included.
 #
-# config_generate NAME EMAIL MODULES -- create config.toml.
+# The wizard offers your global git identity as the default, so this takes
+# whatever `git config user.name` returns -- and `Martin "Zach" Z` is a real
+# name shape. Interpolated raw it wrote `name  = "Martin "Zach" Z"`, and dasel
+# stops parsing at the stray quote: the [modules] table BELOW it disappeared
+# from the parsed document entirely. First run, nothing typed wrong, and the
+# config the tool just wrote for you enables nothing.
 #
-# This is the only function in the repo that writes the config, and it runs
-# once, at `dot config --init`. Afterwards the file is yours: `dot config`
-# opens it in $EDITOR and nothing here ever rewrites it. That is what lets the
-# comments below survive, and it is why enabling a module later is an edit
-# rather than a wizard re-run.
+# Backslash first, or the escape added for a quote would itself be escaped.
+__cfg_quote() {
+  local v=$1
+  v=${v//\\/\\\\}
+  v=${v//\"/\\\"}
+  printf '"%s"' "$v"
+}
 #
-# Refuses to clobber an existing file. Deleting it is an explicit act.
+# config_generate NAME EMAIL MODULES -- create config.toml, once, at
+# `dot config --init`. Afterwards the file is yours and nothing here rewrites
+# it: that is what lets the comments below survive, and why enabling a module
+# later is an edit rather than a wizard re-run. Refuses to clobber.
 config_generate() {
   local name=$1 email=$2 modules=$3 line
 
@@ -122,17 +192,18 @@ schema = 1
 
 HEADER
 
-    printf '[user]\nname  = "%s"\nemail = "%s"\n\n' "$name" "$email"
+    printf '[user]\nname  = %s\nemail = %s\n\n' \
+      "$(__cfg_quote "$name")" "$(__cfg_quote "$email")"
 
     printf '[modules]\n'
     printf '# Add or remove names, then run `dot apply`.\n'
     printf '# Available: %s\n' "$(modules_all | tr '\n' ' ' | sed 's/ $//')"
     printf 'enabled = [\n'
-    # `if`, not a trailing `&&`. Only the commands after this loop keep the
-    # shape harmless here, and that is not a property worth relying on twice:
-    # a false test on the last line leaves the loop at status 1. See CLAUDE.md.
+    # `if`, not a trailing `&&` -- the same landmine as in toml_list.
+    # Module names are validated elsewhere, but quoted through the same helper
+    # so there is one answer to "how does a value get into this file".
     while IFS= read -r line; do
-      if [[ -n $line ]]; then printf '  "%s",\n' "$line"; fi
+      if [[ -n $line ]]; then printf '  %s,\n' "$(__cfg_quote "$line")"; fi
     done <<<"$modules"
     printf ']\n\n'
 

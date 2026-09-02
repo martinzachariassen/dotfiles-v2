@@ -76,3 +76,30 @@ doctor() { run env -u ZDOTDIR "$BASH" "$DOT_ROOT/modules/zsh/doctor.sh"; }
   doctor
   [[ $output != *"ZDOTDIR is "*", expected"* ]]
 }
+
+# --- What the module actually ships ------------------------------------------
+
+@test "syntax: every zsh file this module links parses" {
+  # The gap this closes: `make check` runs shellcheck and shfmt over *.sh, and
+  # these are the only files in the repo that are neither. So a stray `fi` in
+  # .zshrc passes CI, links cleanly, and the symptom arrives on the next machine
+  # to open a shell -- including the shell you would want to fix it from.
+  #
+  # `zsh -n` parses without executing, which is the only safe way to ask: these
+  # files run `eval`, set PATH and start a prompt.
+  command -v zsh >/dev/null || skip 'no zsh on this machine'
+
+  local f checked=0
+  while IFS= read -r f; do
+    checked=$((checked + 1))
+    run zsh -n "$f"
+    [ "$status" -eq 0 ] || {
+      echo "zsh -n rejected ${f#"$DOT_ROOT"/}:"
+      echo "$output"
+      return 1
+    }
+  done < <(find "$DOT_ROOT/modules/zsh/home" -type f)
+
+  # Or a rename makes this pass over nothing, forever, without saying so.
+  [ "$checked" -gt 0 ]
+}

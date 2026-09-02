@@ -12,9 +12,9 @@ All code, comments, commit messages and docs are in **English**.
 
 Two caps, enforced by `make size` in CI:
 
-- **The engine -- `install.sh`, `bin/dot`, `lib/`, `core/` -- is capped at
-  2500 lines.** This is the part v1 rotted in, so growth here has to be a
-  deliberate act rather than a drift.
+- **The engine -- `install.sh`, `uninstall.sh`, `bin/dot`, `lib/`, `core/` --
+  is capped at 2500 lines.** This is the part v1 rotted in, so growth here has
+  to be a deliberate act rather than a drift.
 - **Each module's shell is capped at 150 lines**, counted per directory. The
   sum across modules is reported and *not* capped, and neither is the number of
   modules.
@@ -90,6 +90,21 @@ the file. So it ends the way `install.sh` does, with an `exec`: `install.sh`
 execs *into* the repo, `uninstall.sh` execs *out* of it, into a throwaway
 script under `/tmp` that depends on neither. That turns "when does bash re-read
 a deleted script" into a question nobody has to answer.
+
+**An unquotable checkout path is refused once, not escaped three times.** Three
+places bake `$DOT_ROOT` into a script: `core/apply.sh` writes the shim,
+`uninstall.sh` writes the throwaway it execs into, and both readers `grep -F`
+for the shim's exact `DOT_ROOT="<path>"` line. A `"` in the path makes that
+throwaway a syntax error -- so you type `remove`, and Homebrew and the repo are
+both still there afterwards with nothing said about why -- and a backtick or
+`$( )` is not a broken string but a command the generated script runs.
+Escaping at each site would be one rule in three copies that have to agree
+forever, and the greps would have to learn the escaped form too. `lib/dot.sh`
+rejects the path instead, right after deriving it and before the first
+`source`. Spaces and non-ASCII stay legal, and that half is load-bearing: every
+use is already quoted, and quoting is exactly what those four characters
+defeat. A guard that refuses paths people really have is a guard that gets
+deleted.
 
 **A destructive summary states counts, not categories.** The confirmation line
 read "Homebrew and every package it installed" -- true, and read by everyone as
@@ -198,16 +213,24 @@ enclosing `x=$(...)`, and with `pipefail` it survives a `| sort` to reach the
 caller. Use `if`. This bug has now appeared twice, in `lib/wizard.sh` and
 `lib/modules.sh`.
 
-**A subshell cannot memoise anything.** Every caller of `modules_enabled` reads
-it as `< <(modules_enabled)`, so a cache variable set inside is discarded with
-the subshell. Things that must happen once per run -- warnings, validation --
-belong at the call site in `bin/dot`, not in the function being called. This
-has now bitten twice: `fs_backup_dir` was called as `$(fs_backup_dir)`, which
-is also a subshell, so it never memoised its directory. One apply scattered its
-backups across a directory per second, and the line telling you where they had
-gone vanished from the report. It now assigns to `__DOT_BACKUP_DIR` and prints
-nothing -- a function whose whole job is to remember something cannot be called
-in a way that throws the memory away.
+**A subshell cannot memoise anything, and neither can a process.** Every caller
+of `modules_enabled` reads it as `< <(modules_enabled)`, so a cache variable set
+inside is discarded with the subshell. Things that must happen once per run --
+warnings, validation -- belong at the call site in `bin/dot`, not in the
+function being called.
+
+`fs_backup_dir` is the worked example, and it took two attempts because there
+are two boundaries, not one. Called as `$(fs_backup_dir)` the memo died in the
+subshell: every collision re-ran `date`, one apply scattered its backups across
+a directory per second, and the line saying where they had gone vanished from
+the report. Assigning to a global fixed the subshell and not the **process** --
+a hook is its own bash process, so a file `containers/apply.sh` moved aside went
+into a directory the driver had never heard of and the summary reported no
+backups at all. The answer was to stop remembering and start deriving:
+`DOT_RUN_ID` is set once in `lib/dot.sh` and **exported**, so every process in
+the run computes the same path without anyone having to share anything. When
+something must be agreed on across a process boundary, an inherited input beats
+a remembered value.
 
 **Failure reporting is one line, and stays one line.** The ERR trap in
 `lib/dot.sh` prints file, line, command and status -- nothing else. Both guards
@@ -224,10 +247,51 @@ output format means one set of quoting rules to undo, in `__cfg_unquote`. YAML
 quotes a value only when it has to, so the two cases that matter are an empty
 string (comes back as `""`) and anything containing `: ` (single-quoted).
 
+**dasel does not validate, and that is the most dangerous fact in this file.**
+On a malformed line it stops parsing, keeps everything it read up to there, and
+**exits 0**. So one missing comma in `enabled = [ "git", "zsh" "macos-defaults" ]`
+deletes the whole `[modules]` table from the parsed document while every key
+above it still answers. The old health check asked for `schema`, which the
+generator writes *above* all user-editable content, so it could never fail on a
+hand-edit -- and hand-editing is the supported workflow.
+
+What that costs is not a wrong value. With no enabled modules every link into
+the repo is unclaimed by definition, so `dot doctor` reported a working setup as
+orphaned and closed with `Remove with: rm <path>`. A typo made the health check
+tell you to delete your dotfiles.
+
+`cfg_parse_problems` is the answer, and it is two checks because there is no
+TOML parser here to be the one check: every `[table]` the file declares must be
+visible in `keys()`, and `modules.enabled` must be *readable* -- which is not
+the same as non-empty, since `enabled = []` is exactly what the `none` profile
+writes. That second check is the whole difference between "nothing is enabled"
+and "nothing could be read". `dot apply` refuses; `dot doctor` reports. The
+residual is stated in the code: a typo inside the **last** table drops only
+that table's remaining scalars, and closing it needs a real parser.
+
+The corollary is that **nothing user-supplied gets interpolated into a
+structured file unescaped**. `config_generate` had `printf 'name  = "%s"'`, and
+the wizard offers your global git identity as the default -- so `Martin "Zach" Z`
+wrote a config that truncated at the stray quote, on a first run, with nothing
+typed wrong. `modules/git/apply.sh` had the same shape into git's config
+language, where `#` starts a comment: `name = Martin # 1` read back as `Martin`.
+Both quote through a helper now.
+
+`defaults` is the same trap one tool over, and it does not even need a quote:
+`defaults write com.apple.dock tilesize -int big` exits 0 and stores **0**, so
+`dock_tilesize = "big"` gave you a Dock whose icons have no width and no message
+anywhere. `macos-defaults/apply.sh` checks the value itself and refuses it with
+a `fail` rather than a `die`, so one bad field does not also cost you the Finder
+and keyboard settings written below it. What dasel, git-config and `defaults`
+have in common is the rule: when you shell out to a tool that will accept
+anything you hand it, the validation has to live on this side of the call.
+
 **dasel parses `-` as subtraction.** `settings.macos-defaults.dock` fails with
 a type error, and neither `"` nor `'` quoting helps -- only bracket syntax,
 `settings["macos-defaults"].dock`. Always go through `module_setting`; there is
-a test pinning this.
+a test pinning this. Note that `cfg_parse_problems` only ever *compares* table
+names and never builds a selector from one, which is what keeps this problem
+out of it.
 
 **Hooks are executed, not sourced.** `bash modules/git/doctor.sh` reproduces
 exactly what `dot doctor` does. Process isolation is why no hook can leak a
@@ -262,13 +326,26 @@ Warnings still do not change the exit status; `dot doctor && ...` keeps
 working.
 
 **A warning inside a hook needs a number to travel on.** A hook that only
-warned is neither 0 nor 1, so it exits `DOT_STATUS_WARN` (2) and its driver
-folds that back in with `fold_status`. Before that existed, both readings of a
+warned is neither 0 nor 1, so it exits `DOT_STATUS_WARN` and its driver folds
+that back in with `fold_status`. Before that existed, both readings of a
 non-zero status were in the tree and both were wrong: doctor's `|| true` threw
 the warning away, and apply's `if ! module_run_hook` turned it into a crash --
 `git/apply.sh` warns about an empty `user.name`, and that was reported as
 "git: apply.sh failed". `bin/dot` clears `__DOT_EXIT_WARN` for itself, because
 it is nobody's hook.
+
+**That number is 3, and it was 2, and the move is the point.** bash exits 2 on
+a **syntax error** -- a hook with a typo in it, which executed nothing -- so
+every driver in the repo read a script that never ran as "finished, with
+something worth mentioning". The worst site was `module_remove`: `uninstall.sh`
+refuses to hand off to the irreversible half while `DOT_FAILURES` is non-zero,
+and a warning does not bump it, so a mistyped `remove.sh` let the run go on to
+zap every cask, uninstall Homebrew and delete the repo with that module's
+cleanup never having happened -- invisibly, because `macos-defaults/remove.sh`
+exits warn on purpose and warnings during an uninstall look routine. Any number
+can collide with whatever a hook's last command returned; the rule is that it
+must not collide with the **interpreter**, which owns 0, 1, 2, 126, 127 and
+128+n. There is a test asserting the property rather than the number.
 
 ## Before committing
 
@@ -280,11 +357,29 @@ shellcheck, shfmt, bats and the size budget. The `Makefile` is the only copy of
 those commands -- CI runs the same target. Do not inline them anywhere else;
 there were three copies before, and they had already drifted.
 
-## Explaining bash
+## What comments are for
 
-The repo owner is not a shell expert. `docs/bash-guide.md` explains every idiom
-used here in plain English -- keep it current when introducing a new one, and
-prefer a one-clause pointer at the call site
-(`# < <(...) is a subshell; see docs/bash-guide.md`) over re-explaining the
-idiom inline. Comments in the code are for **why this decision**, not for what
-bash syntax means.
+Comments here explain **why this decision**, not what bash syntax means. The
+test is whether the line would survive being read by someone who already knows
+bash: a comment that narrates the code is noise, a comment that records the bug
+that produced the code is the only copy of that information.
+
+Three things earn a comment:
+
+- **A landmine** -- something that looks fine and is not. `cmd && printf` as the
+  last statement in a loop, `colima status` creating `~/.colima`, a subshell
+  that cannot memoise. Each of these has cost real time at least once.
+- **An invariant** a future edit would break without noticing, ideally naming
+  the other place that has to agree. Four files have to agree on bash 5; two
+  verbs have to agree on which links belong to the repo.
+- **A road not taken**, when the obvious alternative is wrong for a
+  non-obvious reason -- a shim instead of a symlink, `rmdir` instead of
+  `rm -rf`, casks removed before Homebrew.
+
+There was a `docs/bash-guide.md` explaining every idiom used here in plain
+English. It was deleted: a second file that has to stay in sync with the code
+is the same failure as a second registry, and the idioms that actually cost
+time are the ones above, which are documented where they bite. When an idiom
+genuinely needs a word, give it one clause at the call site (`# < <(...) is a
+subshell, so a variable set inside it does not survive`) rather than a pointer
+somewhere else.

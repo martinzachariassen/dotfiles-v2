@@ -2,19 +2,18 @@
 #
 # Make Homebrew's compose and buildx visible to the docker CLI.
 #
-# Homebrew installs them as plugin binaries under its own prefix, and the
-# docker CLI only looks in ~/.docker/cli-plugins. Without these links
-# `docker compose up` is an unknown command while `docker-compose up` works --
-# the kind of split that costs twenty minutes the first time.
+# Homebrew installs them under its own prefix; the docker CLI only looks in
+# ~/.docker/cli-plugins. Without these links `docker compose up` is an unknown
+# command while `docker-compose up` works -- a split that costs twenty minutes
+# the first time.
 #
 # Homebrew's caveat suggests `cliPluginsExtraDirs` in ~/.docker/config.json
-# instead. That is the same file `docker login` writes credentials into, so
-# this module links rather than edit it.
+# instead. That is the file `docker login` writes credentials into, so this
+# module links rather than edit it.
 #
-# The links are made with fs_link, the same function that links every module's
-# home/ tree: it is idempotent, it honours --dry-run, and a real file in the
-# way is moved to the backup tree rather than destroyed. The only difference
-# is that the source is in Homebrew's prefix instead of this repo.
+# fs_link, so these behave like every other link: idempotent, --dry-run aware,
+# and a real file in the way is backed up rather than destroyed. Their targets
+# are outside $DOT_ROOT, though, which is why remove.sh has to name them.
 
 set -euo pipefail
 source "${DOT_ROOT:?}/lib/dot.sh"

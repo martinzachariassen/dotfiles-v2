@@ -30,21 +30,25 @@ link_one() {
 
 # --- fs_unlink ----------------------------------------------------------------
 
-@test "unlink: removes a symlink" {
+@test "unlink: removes a symlink, and says so" {
   link_one
-  fs_unlink "$HOME/.config/demo/kept.conf"
+  run fs_unlink "$HOME/.config/demo/kept.conf"
   [ ! -e "$HOME/.config/demo/kept.conf" ]
-  [ "$DOT_N_REMOVED" -eq 1 ]
+  [[ $output == *"unlink  ~/.config/demo/kept.conf"* ]]
 }
 
-@test "unlink: leaves a real file alone" {
+@test "unlink: leaves a real file alone, and does not claim otherwise" {
   # The whole reason fs_unlink tests for -L instead of calling rm. A real file
   # at a path a module once owned is the user's, whoever put it there.
+  #
+  # Both halves matter: silence is the second one. This is the only record an
+  # uninstall leaves, so a line announcing a removal that did not happen is a
+  # log that lies about what is still on the disk.
   mkdir -p "$HOME/.config/demo"
   printf 'mine\n' >"$HOME/.config/demo/kept.conf"
-  fs_unlink "$HOME/.config/demo/kept.conf"
+  run fs_unlink "$HOME/.config/demo/kept.conf"
   [ -f "$HOME/.config/demo/kept.conf" ]
-  [ "$DOT_N_REMOVED" -eq 0 ]
+  [ -z "$output" ]
 }
 
 @test "unlink: a dry run announces and changes nothing" {
@@ -159,6 +163,46 @@ link_one() {
   [ "$apps" -lt "$brew" ]
 }
 
+@test "uninstall: finds Homebrew even when the invoking shell cannot" {
+  # THE REGRESSION. Every other brew caller in the repo goes through brew_load;
+  # uninstall.sh called bare `brew` and nobody noticed, because the failure is
+  # silent and looks like good news. Run from a shell that never sourced
+  # `brew shellenv` -- which is exactly what `bash uninstall.sh` is -- every
+  # brew call produced nothing, so the preview reported no applications over a
+  # machine full of them and the run destroyed Homebrew anyway. Each of those
+  # .apps would have been left in /Applications with nothing able to remove it.
+  #
+  # Skipped rather than faked where there is no Homebrew to find: the property
+  # under test is "we locate a brew that is installed but not on PATH", and
+  # there is nothing to locate on a machine without one.
+  command -v brew >/dev/null 2>&1 || skip 'no Homebrew on this machine'
+  local n_casks
+  n_casks=$(brew list --cask 2>/dev/null | wc -l | tr -d ' ')
+  ((n_casks > 0)) || skip 'no casks installed, so nothing would be stranded'
+
+  DOT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+
+  # A PATH with no Homebrew in it. "$BASH" is the interpreter already running,
+  # so the script still starts under bash 5 -- this test is about brew, not
+  # about the re-exec guard.
+  run env -u HOMEBREW_PREFIX PATH=/usr/bin:/bin:/usr/sbin:/sbin \
+    DOT_ROOT="$DOT_ROOT" HOME="$HOME" DOT_STATE="$DOT_STATE" \
+    DOT_CONFIG="$DOT_CONFIG" "$BASH" "$DOT_ROOT/uninstall.sh" --dry-run
+
+  [ "$status" -eq 0 ]
+
+  # Asserted positively, by counting: every cask must be itemised by name. A
+  # negative assertion against the "nothing installed" wording would go quiet
+  # the day someone rewords that line, which is the same class of mistake as
+  # the bug itself.
+  local listed
+  listed=$(printf '%s\n' "$output" | grep -c 'uninstall  ' || true)
+  [ "$listed" -eq "$n_casks" ]
+
+  # And the headcount must land on the counted branch, not the vague fallback.
+  [[ $output == *"formulae it manages"* ]]
+}
+
 @test "uninstall: refuses an unknown option" {
   DOT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   run env DOT_ROOT="$DOT_ROOT" bash "$DOT_ROOT/uninstall.sh" --dry
@@ -200,7 +244,10 @@ link_one() {
 
   run env DOT_ROOT="$DOT_ROOT" bash "$DOT_ROOT/uninstall.sh" --dry-run
   [ "$status" -eq 0 ]
-  [[ $output == *"remove"* ]]
+  # The state directory BY NAME. A bare `*"remove"*` matched the unconditional
+  # `remove <DOT_ROOT>` line at the end of every successful preview, so the
+  # branch under test could be deleted with this test still passing.
+  [[ $output == *"remove  ${DOT_STATE/#$HOME/\~}"* ]]
   [[ $output != *"left alone"* ]]
   # ...and the preview did not act on it.
   [ -d "$DOT_STATE/backups" ]

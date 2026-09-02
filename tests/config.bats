@@ -93,6 +93,100 @@ teardown() { teardown_sandbox; }
   [ "$output" = "fallback" ]
 }
 
+# --- a config that does not parse whole --------------------------------------
+#
+# dasel does not validate: it stops at the first malformed line, keeps what it
+# read, and exits 0. The old check asked it for `schema`, which the generator
+# writes above everything a user edits, so it passed on every truncated config.
+# These pin the detector -- and dasel's behaviour, which is what makes the
+# detector necessary in the first place.
+
+@test "parse: dasel really does truncate silently -- rc 0, half a document" {
+  # If a future dasel starts rejecting this outright, cfg_parse_problems is
+  # dead weight and this test is where you find out.
+  printf 'schema = 1\n[modules]\nenabled = [ "git" "zsh" ]\n' >"$DOT_CONFIG"
+  run dasel -i toml -o yaml 'schema' <"$DOT_CONFIG"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1" ]
+}
+
+@test "parse: a clean config reports no problems" {
+  run cfg_parse_problems
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "parse: a missing comma in enabled is caught, not waved through" {
+  # The end-to-end scenario. Everything below the typo vanishes, so the config
+  # names no modules -- and every link in $HOME is then unclaimed by definition.
+  printf 'schema = 1\n[modules]\nenabled = [ "git" "zsh" ]\n\n[settings.git]\nsigningkey = "k"\n' \
+    >"$DOT_CONFIG"
+
+  # The trap: nothing else in the engine objects to this file.
+  run modules_require_known
+  [ "$status" -eq 0 ]
+  run cfg_list 'modules.enabled'
+  [ -z "$output" ]
+
+  run cfg_parse_problems
+  [ -n "$output" ]
+  [[ $output == *settings* ]]
+}
+
+@test "parse: an empty enabled list is valid, not a parse failure" {
+  # The `none` profile writes exactly this, and confusing it with a truncated
+  # config would make the detector fire on a supported configuration -- which
+  # is the failure mode that gets a check deleted.
+  rm "$DOT_CONFIG"
+  config_generate "A" "a@b.c" ""
+
+  run cfg_parse_problems
+  [ -z "$output" ]
+}
+
+@test "parse: a [modules] table whose enabled key was eaten is caught" {
+  # The narrow case the table check cannot see on its own: [modules] itself
+  # parsed, so it is present in keys(); only the list below it was lost.
+  printf 'schema = 1\n[modules]\nenabled = [ "git"\n' >"$DOT_CONFIG"
+  run cfg_parse_problems
+  [ "$status" -eq 0 ]
+  [[ $output == *"no readable"* ]]
+}
+
+@test "parse: a dropped table is reported once, by name, with the cause" {
+  # Not twice: [settings] going missing must not also trip the enabled check.
+  # And the message has to name the table, because "does not parse" over a
+  # 40-line file is a message you cannot act on.
+  printf 'schema = 1\n[modules]\nenabled = ["git"]\nstray line\n\n[settings.git]\nk = "v"\n' \
+    >"$DOT_CONFIG"
+  run cfg_parse_problems
+  [ "${#lines[@]}" -eq 1 ]
+  [[ $output == *"[settings]"* ]]
+}
+
+@test "parse: apply refuses a truncated config instead of doing nothing quietly" {
+  printf 'schema = 1\n[modules]\nenabled = [ "git" "zsh" ]\n\n[settings.git]\nk = "v"\n' \
+    >"$DOT_CONFIG"
+
+  run "$DOT_ROOT/bin/dot" apply --dry-run
+  [ "$status" -ne 0 ]
+  [[ $output == *"did not parse"* ]]
+  # It stopped before deciding the machine needed nothing done to it.
+  [[ $output != *"None enabled"* ]]
+}
+
+@test "parse: doctor reports it and does not tell you to delete your dotfiles" {
+  # The worst consequence, asserted directly. With no enabled modules every
+  # link into the repo is an orphan, so doctor listed a working setup under
+  # "unclaimed" and closed with `Remove with: rm <path>`.
+  printf 'schema = 1\n[modules]\nenabled = [ "git" "zsh" ]\n\n[settings.git]\nk = "v"\n' \
+    >"$DOT_CONFIG"
+
+  run bash "$DOT_ROOT/core/doctor.sh"
+  [ "$status" -ne 0 ]
+  [[ $output == *"cannot see it"* ]]
+}
+
 # --- the generator ----------------------------------------------------------
 
 @test "generate: refuses to overwrite an existing config" {
@@ -121,6 +215,36 @@ teardown() { teardown_sandbox; }
   config_generate "A" "a@b.c" "git"
   run grep -c '^#' "$DOT_CONFIG"
   [ "$output" -gt 3 ]
+}
+
+@test "generate: a quote in the git identity does not truncate the config" {
+  # No typo required: the wizard offers `git config user.name` as the default,
+  # and `Martin "Zach" Z` is a name people have. Written raw it closed the TOML
+  # string early, dasel stopped there, and the [modules] table BELOW it was
+  # gone from the parsed document -- a first run that enables nothing, from a
+  # config the tool wrote itself.
+  rm "$DOT_CONFIG"
+  config_generate 'Martin "Zach" Z' 'a@b.c' "$(printf 'git\n')"
+
+  run cfg_get 'user.name'
+  [ "$output" = 'Martin "Zach" Z' ]
+  # The half that vanished.
+  run cfg_list 'modules.enabled'
+  [ "$output" = "git" ]
+  run cfg_parse_problems
+  [ -z "$output" ]
+}
+
+@test "generate: a backslash survives too, and does not eat the next character" {
+  # Backslash has to be escaped BEFORE the quote, or the escape added for a
+  # quote gets escaped in turn and the value silently changes shape.
+  rm "$DOT_CONFIG"
+  config_generate 'back\slash and "quote"' 'a@b.c' ""
+
+  run cfg_get 'user.name'
+  [ "$output" = 'back\slash and "quote"' ]
+  run cfg_parse_problems
+  [ -z "$output" ]
 }
 
 @test "generate: dry run writes nothing" {

@@ -17,9 +17,8 @@ echo "    repo: $REPO_URL"
 echo "    into: $REPO_DIR"
 echo
 
-# Progress is printed as "[n/5]" so an unattended run says where it is. This is
-# a helper rather than the number written out at each site: the count changes
-# every time a step is added, and last time it did, the copies drifted.
+# "[n/5]" so an unattended run says where it is. A helper rather than the total
+# written out at each site, because last time a step was added the copies drifted.
 TOTAL_STEPS=5
 step() {
   printf '==> [%s/%s] %s\n' "$1" "$TOTAL_STEPS" "$2"
@@ -73,10 +72,10 @@ else
 
   # One prompt up front beats several mid-run -- but priming it once is not
   # enough. NONINTERACTIVE=1 means Homebrew's installer never stops to ask, and
-  # the credential expires after five minutes, which a cold install on a slow
-  # connection takes longer than: it failed after the download, with a
-  # permission error, on the machines least able to afford the retry. The loop
-  # refreshes it, and stops by itself the moment refreshing stops working.
+  # sudo's credential expires after five minutes, which a cold install on a slow
+  # connection takes longer than: it failed after the download with a permission
+  # error, on the machines least able to afford the retry. The loop refreshes it
+  # and stops by itself the moment refreshing stops working.
   sudo -v
   while sudo -n true 2>/dev/null; do sleep 50; done &
   keepalive=$!
@@ -123,8 +122,8 @@ else
 fi
 
 # --- 5. Hand off ------------------------------------------------------------
-# From here the repo is on disk and `dot` owns the process.
-# Phase 1 (core packages) installs `dasel` and `fzf`; phase 2 asks what you want and applies it.
+# From here the repo is on disk and `dot` owns the process: phase 1 installs
+# dasel and fzf, phase 2 asks what you want and applies it.
 step 5 "Handing off to dot apply"
 echo
 

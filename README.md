@@ -111,7 +111,7 @@ they show every shape the contract allows.
 
 ### Adding one
 
-Create the directory, write the two lines of `module.toml`, add whatever of the
+Create the directory, write the one line of `module.toml`, add whatever of the
 optional files you need. Nothing else to register.
 
 ## How files get linked
@@ -243,9 +243,6 @@ Shell code is capped, and CI enforces it:
 
 Going over is a signal to cut something or move it, not to raise the number.
 `make size` prints all of it.
-
-New to shell scripting? [`docs/bash-guide.md`](docs/bash-guide.md) explains
-every bash idiom this repo uses, one at a time.
 
 ### When something breaks
 

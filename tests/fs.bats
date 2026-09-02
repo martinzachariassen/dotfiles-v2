@@ -133,9 +133,11 @@ teardown() { teardown_sandbox; }
 }
 
 @test "backup: the run remembers where it put things" {
-  # fs_backup_dir was called as `$(fs_backup_dir)`, and a command substitution
-  # is a subshell -- so the memoised path never reached the caller. Everything
-  # downstream that reads the variable silently stopped working.
+  # This used to be a memoised variable, and both ways of getting that wrong
+  # shipped: called as `$(fs_backup_dir)` the memo died in the subshell, and
+  # once that was fixed it still could not cross a process boundary. The path
+  # is now derived from an inherited id, so the assertion is on the property
+  # that matters -- the file is where the run says it is.
   local m
   m=$(fixture_module git)
   fixture_file "$m" ".gitconfig" "from-repo"
@@ -143,8 +145,55 @@ teardown() { teardown_sandbox; }
 
   fs_link_tree "$m"
 
-  [ -n "$__DOT_BACKUP_DIR" ]
   fs_backup_used
+  [ "$(cat "$DOT_STATE/backups/$DOT_RUN_ID/.gitconfig")" = "precious" ]
+}
+
+@test "backup: a hook's backup is reported by the driver that ran it" {
+  # A hook is a separate process, so nothing it assigns can reach the driver.
+  # containers/apply.sh calls fs_link directly -- and anyone who installed
+  # Docker Compose the way Docker's own docs say to has a real file at
+  # ~/.docker/cli-plugins/docker-compose for it to move aside. The summary said
+  # "4 linked" and named no backup directory, while the user's binary sat in
+  # one nothing had mentioned.
+  local m
+  m=$(fixture_module hooked)
+  fixture_file "$m" "target.txt" "from-repo"
+  echo precious >"$HOME/target.txt"
+
+  # The hook, run the way module_run_hook runs one: its own process.
+  cat >"$DOT_TMP/hook.sh" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+source "$DOT_ROOT/lib/dot.sh"
+fs_link "$m/home/target.txt" "\$HOME/target.txt"
+EOF
+  "$BASH" "$DOT_TMP/hook.sh"
+
+  # This process backed up nothing at all...
+  [ "$DOT_N_BACKED_UP" -eq 0 ]
+  # ...and still knows where the file went, and says so.
+  fs_backup_used
+  run fs_report
+  [[ $output == *"$DOT_STATE/backups/$DOT_RUN_ID"* ]]
+  [ "$(cat "$DOT_STATE/backups/$DOT_RUN_ID/target.txt")" = "precious" ]
+}
+
+@test "backup: a dry run names the directory it would have used" {
+  # fs_backup_used answers from the filesystem now, and a dry run puts nothing
+  # there -- so without the tally half of that test, the preview would go quiet
+  # about the one thing a preview of a destructive move is for.
+  local m
+  m=$(fixture_module git)
+  fixture_file "$m" ".gitconfig" "from-repo"
+  echo precious >"$HOME/.gitconfig"
+  export DOT_DRY_RUN=1
+
+  fs_link_tree "$m"
+  run fs_report
+
+  [[ $output == *"$DOT_STATE/backups/$DOT_RUN_ID"* ]]
+  [ ! -d "$DOT_STATE/backups" ]
 }
 
 @test "report: says where the replaced files went" {
@@ -233,16 +282,37 @@ teardown() { teardown_sandbox; }
 
 # --- dry run ----------------------------------------------------------------
 
-@test "dry run: reports intent and changes nothing" {
+@test "dry run: reports the same intent a real run would, and changes nothing" {
+  # Both halves, because the name promised both and only the second was checked.
+  # fs_link prints its intent BEFORE the dry-run guard precisely so the two runs
+  # cannot describe the change differently -- so deleting the announcement, or
+  # moving it below the guard, has to fail here.
   local m
   m=$(fixture_module git)
   fixture_file "$m" ".gitconfig"
   export DOT_DRY_RUN=1
 
-  fs_link_tree "$m"
+  run fs_link_tree "$m"
+  [[ $output == *"link    ~/.gitconfig"* ]]
 
+  # `run` is a subshell, so re-do it here for the tally.
+  fs_link_tree "$m"
   [ ! -e "$HOME/.gitconfig" ]
   [ "$DOT_N_LINKED" -eq 1 ]
+}
+
+@test "dry run: the words are identical to the real run's" {
+  # The property the comment in fs_link claims, asserted rather than assumed.
+  local m
+  m=$(fixture_module git)
+  fixture_file "$m" ".gitconfig" "from-repo"
+  echo precious >"$HOME/.gitconfig" # forces the noisiest branch
+
+  DOT_DRY_RUN=1 run fs_link_tree "$m"
+  local dry=$output
+  DOT_DRY_RUN=0 run fs_link_tree "$m"
+
+  [ "$dry" = "$output" ]
 }
 
 @test "dry run: does not move a real file aside" {
@@ -304,6 +374,62 @@ teardown() { teardown_sandbox; }
   m=$(fixture_module empty)
   run fs_check_tree "$m"
   [ "$status" -eq 0 ]
+}
+
+@test "check: every classify state has a report line of its own" {
+  # fs_classify has five states and fs_check_tree has a branch for each, but
+  # only `ok` and `clobbered` were exercised -- so the wrong-target, broken and
+  # missing arms could each have been deleted, or made to print the same
+  # sentence, with the suite still green. A doctor whose five distinct problems
+  # read alike is a doctor you stop reading.
+  local m
+  m=$(fixture_module many)
+  fixture_file "$m" "gone.conf"     # will point elsewhere
+  fixture_file "$m" "dangling.conf" # will point at nothing
+  fixture_file "$m" "absent.conf"   # will not be linked at all
+
+  echo elsewhere >"$DOT_TMP/elsewhere"
+  ln -s "$DOT_TMP/elsewhere" "$HOME/gone.conf"
+  ln -s "$DOT_TMP/never-existed" "$HOME/dangling.conf"
+
+  run fs_check_tree "$m"
+  [ "$status" -eq 1 ]
+  [[ $output == *"wrong target    ~/gone.conf"* ]]
+  [[ $output == *"broken link     ~/dangling.conf"* ]]
+  [[ $output == *"not linked      ~/absent.conf"* ]]
+}
+
+@test "check: drift in one file is drift, even with clean files around it" {
+  # `drift=1` is set inside the loop and returned after it. Written as an early
+  # `return 1` -- the obvious refactor -- the remaining files go unreported, and
+  # doctor names one problem out of four. A single-file fixture cannot tell the
+  # two implementations apart.
+  local m
+  m=$(fixture_module mixed)
+  fixture_file "$m" "a.conf"
+  fixture_file "$m" "b.conf"
+  fixture_file "$m" "c.conf"
+  fs_link_tree "$m"
+  rm "$HOME/b.conf" # the middle one, so order cannot mask it
+
+  run fs_check_tree "$m"
+  [ "$status" -eq 1 ]
+  [[ $output == *"b.conf"* ]]
+}
+
+@test "check: warnings from a doctor pass reach the tally" {
+  # fs_check_tree reports via `warn`, and warn's whole job is to bump
+  # DOT_WARNINGS so `dot doctor`'s Result line cannot say "Everything looks
+  # right" over a home directory full of drift. Called with `run` -- a subshell
+  # -- the counter is thrown away, so this one deliberately does not.
+  local m before
+  m=$(fixture_module git)
+  fixture_file "$m" ".gitconfig"
+  before=$DOT_WARNINGS
+
+  fs_check_tree "$m" >/dev/null || true
+
+  [ "$DOT_WARNINGS" -gt "$before" ]
 }
 
 # --- fs_pairs ---------------------------------------------------------------

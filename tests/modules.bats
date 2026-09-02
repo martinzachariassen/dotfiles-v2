@@ -152,7 +152,7 @@ hook() {
 @test "doctor: a doctor.sh that only warns is a warning, not a failure" {
   local m
   m=$(make_module demo)
-  hook "$m" doctor.sh 2
+  hook "$m" doctor.sh "$DOT_STATUS_WARN"
 
   module_doctor demo
   [ "$DOT_FAILURES" -eq 0 ]
@@ -165,7 +165,7 @@ hook() {
   # a broken hook that is working exactly as written.
   local m
   m=$(make_module demo)
-  hook "$m" apply.sh 2
+  hook "$m" apply.sh "$DOT_STATUS_WARN"
 
   module_apply demo
   [ "$DOT_FAILURES" -eq 0 ]
@@ -227,11 +227,97 @@ hook() {
   # every unexpected crash would be downgraded to a shrug.
   local m
   m=$(make_module demo)
-  hook "$m" doctor.sh 3
+  hook "$m" doctor.sh 42
 
   module_doctor demo
   [ "$DOT_FAILURES" -eq 1 ]
   [ "$DOT_WARNINGS" -eq 0 ]
+}
+
+@test "doctor: a hook with a SYNTAX ERROR is a failure, not a warning" {
+  # THE BUG DOT_STATUS_WARN MOVED OFF 2 FOR. bash exits 2 on a syntax error, so
+  # while the warn status was also 2, a hook containing a typo -- which ran
+  # nothing whatsoever -- was folded in as "finished, with something worth
+  # mentioning". Every driver in the repo believed it.
+  #
+  # Written as a real syntax error rather than `exit 2`, so it keeps testing the
+  # actual collision if bash ever picks a different number for one.
+  local m
+  m=$(make_module demo)
+  printf '#!/usr/bin/env bash\nif [ 1\n' >"$m/doctor.sh"
+
+  module_doctor demo
+  [ "$DOT_FAILURES" -eq 1 ]
+  [ "$DOT_WARNINGS" -eq 0 ]
+}
+
+@test "remove: a hook with a syntax error reaches the uninstall guard" {
+  # Where the same collision was worst. uninstall.sh refuses to hand off to the
+  # irreversible half while DOT_FAILURES is non-zero; a warning does not bump
+  # it. So a mistyped remove.sh used to contribute nothing, and the run went on
+  # to zap every cask, uninstall Homebrew and delete the repo with the module's
+  # cleanup never having run -- indistinguishable from macos-defaults, which
+  # exits WARN on purpose and makes warnings during an uninstall look routine.
+  local m
+  m=$(make_module demo)
+  printf '#!/usr/bin/env bash\nfor x in\n' >"$m/remove.sh"
+
+  module_remove demo
+  [ "$DOT_FAILURES" -eq 1 ]
+}
+
+# --- module_remove ------------------------------------------------------------
+#
+# The tally matters more here than anywhere else: uninstall.sh refuses to hand
+# off to Homebrew's uninstaller while DOT_FAILURES is non-zero, so what this
+# function counts decides whether a reset completes or stops half-done.
+
+@test "remove: a module with no remove.sh is not a failure" {
+  # Most modules have none. If the missing-hook path counted, every uninstall
+  # would abort before Homebrew on a repo of ordinary modules.
+  make_module demo >/dev/null
+
+  module_remove demo
+  [ "$DOT_FAILURES" -eq 0 ]
+  [ "$DOT_WARNINGS" -eq 0 ]
+}
+
+@test "remove: a remove.sh that only warns does not block the uninstall" {
+  # macos-defaults/remove.sh does exactly this -- it warns that preferences
+  # cannot be put back and exits 2. Counted as a failure, that one advisory
+  # would stop every full uninstall before Homebrew, and the machine would be
+  # left with the repo gone and brew still installed.
+  local m
+  m=$(make_module demo)
+  hook "$m" remove.sh "$DOT_STATUS_WARN"
+
+  module_remove demo
+  [ "$DOT_FAILURES" -eq 0 ]
+  [ "$DOT_WARNINGS" -eq 1 ]
+}
+
+@test "remove: a remove.sh that fails is counted, so the handoff is stopped" {
+  # The other direction, and the reason the guard exists: a cleanup that could
+  # not finish must not be followed by destroying the tools that could retry it.
+  local m
+  m=$(make_module demo)
+  hook "$m" remove.sh 1
+
+  module_remove demo
+  [ "$DOT_FAILURES" -eq 1 ]
+}
+
+@test "remove: the hook runs with DOT_MODULE and DOT_MODULE_DIR set" {
+  # The only interface a hook gets. containers/remove.sh does not use them, but
+  # a module that ships several scripts needs to find its own directory, and
+  # nothing else tells it where that is.
+  local m
+  m=$(make_module demo)
+  printf '#!/usr/bin/env bash\nprintf "%%s %%s\\n" "$DOT_MODULE" "$DOT_MODULE_DIR" >"$HOME/env-seen"\n' \
+    >"$m/remove.sh"
+
+  module_remove demo
+  [ "$(cat "$HOME/env-seen")" = "demo $m" ]
 }
 
 # run_script BODY -- BODY in a fresh process with the real library loaded, the
@@ -246,7 +332,24 @@ run_script() {
 
 @test "hooks: a script that warns and breaks nothing exits with the warn status" {
   run_script "warn 'something worth saying'"
-  [ "$status" -eq 2 ]
+  [ "$status" -eq "$DOT_STATUS_WARN" ]
+}
+
+@test "hooks: the warn status is not one bash uses for anything of its own" {
+  # The property that makes the channel usable at all, pinned as a property
+  # rather than as the number 3 -- 2 looked just as safe until a hook with a
+  # typo in it started arriving as a warning. 126 and 127 are bash's "found it
+  # but could not run it" and "did not find it", and both must stay failures.
+  [ "$DOT_STATUS_WARN" -ne 0 ]
+  [ "$DOT_STATUS_WARN" -ne 1 ]
+  [ "$DOT_STATUS_WARN" -ne 126 ]
+  [ "$DOT_STATUS_WARN" -ne 127 ]
+  [ "$DOT_STATUS_WARN" -lt 128 ] # 128+n is the signal range
+
+  # And the one that actually bit: whatever bash exits on a syntax error.
+  printf 'if [ 1\n' >"$DOT_TMP/broken.sh"
+  run bash "$DOT_TMP/broken.sh"
+  [ "$status" -ne "$DOT_STATUS_WARN" ]
 }
 
 @test "hooks: a script that warns AND fails exits 1" {
