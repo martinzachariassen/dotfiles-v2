@@ -24,6 +24,22 @@ setup_sandbox() {
   export XDG_CONFIG_HOME="$HOME/.config"
   export XDG_STATE_HOME="$HOME/.local/state"
 
+  # PATH is a default for $HOME too, and the same reasoning applies one level
+  # out. A mise shim resolves its runtimes under $HOME, so against the sandbox's
+  # empty one a bare `python3` does not fail -- it tries to INSTALL python over
+  # the network, and then fails only when GitHub rate-limits the download. That
+  # read as a doctor bug in ssh.bats, which wants a python3 that is python3.
+  # Dropping the shim directory falls through to the system binaries.
+  local kept=() dir
+  while IFS= read -r dir; do
+    if [[ $dir != */mise/shims ]]; then kept+=("$dir"); fi
+  done < <(tr ':' '\n' <<<"$PATH")
+  PATH=$(
+    IFS=:
+    printf '%s' "${kept[*]}"
+  )
+  export PATH
+
   # The library is loaded from the real repo; only $HOME is fake.
   DOT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   export DOT_ROOT
