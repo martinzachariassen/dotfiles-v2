@@ -24,6 +24,11 @@ set -euo pipefail
 # shellcheck source=../lib/dot.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/dot.sh"
 
+# This is the top level, not somebody's hook. Warnings get reported in the
+# Result line and stop there: `dot doctor && ...` must not break because a
+# link is orphaned or the repo has uncommitted work. See lib/ui.sh.
+__DOT_EXIT_WARN=0
+
 usage() {
   cat <<'EOF'
 usage: dot <command> [options]
@@ -79,7 +84,9 @@ cmd_apply() {
   fs_link_tree "$DOT_ROOT/core"
   # "$BASH" is this shell's own path, so a child script is guaranteed the same
   # interpreter the driver is running under rather than whatever PATH resolves.
-  "$BASH" "$DOT_ROOT/core/apply.sh"
+  # Folded rather than bare: bare, a warning from core would have exited 2 and
+  # `set -e` would have killed the apply before a single module ran.
+  fold_status 'core apply.sh failed' "$BASH" "$DOT_ROOT/core/apply.sh"
 
   # One sudo prompt up front, with a reason, beats several mid-run.
   if modules_want_sudo && [[ $DOT_DRY_RUN != 1 ]]; then
@@ -141,13 +148,14 @@ cmd_doctor() {
     fail "config lists unknown module '$unknown' -- dot apply will refuse"
   done < <(modules_unknown)
 
-  "$BASH" "$DOT_ROOT/core/doctor.sh" || fail 'core checks failed'
-  fs_check_tree "$DOT_ROOT/core" || true
+  fold_status 'core checks failed' "$BASH" "$DOT_ROOT/core/doctor.sh"
+  fs_check_tree "$DOT_ROOT/core" || fail 'core files are not linked -- run: dot apply'
 
+  # module_doctor tallies its own failures; both of these were `|| true` once.
   local name
   while IFS= read -r name; do
     heading "Module: $name"
-    module_doctor "$name" || true
+    module_doctor "$name"
   done < <(modules_enabled)
 
   # Links into the repo that no enabled module claims -- left behind by
@@ -168,6 +176,11 @@ cmd_doctor() {
   heading 'Result'
   if ((DOT_FAILURES > 0)); then
     fail "$DOT_FAILURES problem(s) found"
+  elif ((DOT_WARNINGS > 0)); then
+    # Neither `ok` nor `fail`. Nothing here will stop the next apply and the
+    # exit status stays 0 -- but this line used to read "Everything looks
+    # right" directly under a list of orphaned links and a stopped colima.
+    warn 'No problems found. There are warnings above worth a look.'
   else
     ok 'Everything looks right.'
   fi

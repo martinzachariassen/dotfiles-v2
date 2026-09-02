@@ -102,10 +102,21 @@ fi
 # `[[ $DOT_FAILURES -gt 0 ]] && exit 1; exit $?` looks equivalent and is not:
 # when the test is false the && list itself returns 1, so $? is 1 and every
 # clean hook "fails". That bug made `bash core/apply.sh` exit 1 on success.
+#
+# Warnings leave a hook as DOT_STATUS_WARN, which is the only channel a
+# separate process has for "I found nothing broken, but I said something". Its
+# driver folds that back in with fold_status.
+#
+# bin/dot clears __DOT_EXIT_WARN for itself, because it is nobody's hook: at
+# the top level a warning is information for the person reading, not a signal,
+# and `dot doctor && ...` has to keep working when a link is orphaned.
 __dot_on_exit() {
   local status=$?
   if [[ ${DOT_FAILURES:-0} -gt 0 ]]; then
     exit 1
+  fi
+  if ((status == 0 && ${DOT_WARNINGS:-0} > 0 && ${__DOT_EXIT_WARN:-1})); then
+    exit "$DOT_STATUS_WARN"
   fi
   exit "$status"
 }

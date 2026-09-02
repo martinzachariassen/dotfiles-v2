@@ -66,18 +66,37 @@ fi
 
 # --- 2. Homebrew ------------------------------------------------------------
 if [ -x /opt/homebrew/bin/brew ]; then
+  step 2 "Homebrew already installed"
   eval "$(/opt/homebrew/bin/brew shellenv)"
 else
   step 2 "Installing Homebrew (it will ask for your password)"
-  sudo -v # One sudo prompt up front, with a reason, beats several mid-run.
+
+  # One prompt up front beats several mid-run -- but priming it once is not
+  # enough. NONINTERACTIVE=1 means Homebrew's installer never stops to ask, and
+  # the credential expires after five minutes, which a cold install on a slow
+  # connection takes longer than: it failed after the download, with a
+  # permission error, on the machines least able to afford the retry. The loop
+  # refreshes it, and stops by itself the moment refreshing stops working.
+  sudo -v
+  while sudo -n true 2>/dev/null; do sleep 50; done &
+  keepalive=$!
+  # Also on the error paths: `set -e` must not leave sudo renewing itself.
+  trap 'kill "$keepalive" 2>/dev/null || true' EXIT
+
   # /bin/bash on purpose: this is Homebrew's own installer, which supports the
   # system shell. Everything belonging to THIS repo needs bash 5 -- installed
   # in the next step.
   NONINTERACTIVE=1 /bin/bash -c \
     "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+  # Before the `exec` below, which keeps the PID and does not run EXIT traps:
+  # a keepalive left running here would follow `dot apply` around.
+  kill "$keepalive" 2>/dev/null || true
+  trap - EXIT
+
   eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
-step 2 "Homebrew at $(brew --prefix)"
+echo "    Homebrew at $(brew --prefix)"
 
 # --- 3. bash 5 ---------------------------------------------------------------
 # macOS ships bash 3.2 from 2007 and never updates it. Every script in this

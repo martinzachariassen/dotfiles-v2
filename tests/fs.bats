@@ -107,6 +107,58 @@ teardown() { teardown_sandbox; }
   [ "$output" = "1" ]
 }
 
+@test "backup: the run remembers where it put things" {
+  # fs_backup_dir was called as `$(fs_backup_dir)`, and a command substitution
+  # is a subshell -- so the memoised path never reached the caller. Everything
+  # downstream that reads the variable silently stopped working.
+  local m
+  m=$(fixture_module git)
+  fixture_file "$m" ".gitconfig" "from-repo"
+  echo "precious" >"$HOME/.gitconfig"
+
+  fs_link_tree "$m"
+
+  [ -n "$__DOT_BACKUP_DIR" ]
+  fs_backup_used
+}
+
+@test "report: says where the replaced files went" {
+  # The visible symptom: a run announced "1 backed up" and then never told you
+  # where the file had gone, because fs_backup_used tested a variable the
+  # subshell had thrown away.
+  local m
+  m=$(fixture_module git)
+  fixture_file "$m" ".gitconfig" "from-repo"
+  echo "precious" >"$HOME/.gitconfig"
+
+  fs_link_tree "$m"
+  run fs_report
+
+  [[ $output == *"1 backed up"* ]]
+  [[ $output == *"Replaced files were moved to $DOT_STATE/backups/"* ]]
+}
+
+@test "backup: one run uses one directory, even across a second boundary" {
+  # The silent half of the same bug. Every collision re-ran `date`, so two
+  # files backed up on either side of a second landed in two different
+  # timestamped directories -- and restoring by hand then means knowing to
+  # look in more than one place. The sleep is the point of the test.
+  local m
+  m=$(fixture_module git)
+  fixture_file "$m" ".gitconfig" "from-repo"
+  fixture_file "$m" ".gitignore" "from-repo"
+  echo "precious-one" >"$HOME/.gitconfig"
+  echo "precious-two" >"$HOME/.gitignore"
+
+  fs_link "$m/home/.gitconfig" "$HOME/.gitconfig"
+  sleep 1.1
+  fs_link "$m/home/.gitignore" "$HOME/.gitignore"
+
+  [ "$DOT_N_BACKED_UP" -eq 2 ]
+  run bash -c "find '$DOT_STATE/backups' -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' '"
+  [ "$output" = "1" ]
+}
+
 @test "link: replaces a wrong-target link without making a backup" {
   local m
   m=$(fixture_module git)

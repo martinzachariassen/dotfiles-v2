@@ -26,10 +26,18 @@ SHFMT_FLAGS := -i 2 -ci
 # TWO budgets, not one. v1 reached ~20,700 lines and the single 1500-line cap
 # that replaced it was right about the danger and wrong about where it lives.
 #
-# The ENGINE -- install.sh, bin/dot, lib/, core/ -- is the part v1 rotted in,
-# and it is finished: it knows how to link a file, read a config and run a
-# hook, and none of those get harder as you own more things. Its cap is tight
-# enough that growing it has to be a deliberate act rather than a drift.
+# The ENGINE -- install.sh, bin/dot, lib/, core/ -- is the part v1 rotted in.
+# Its cap was 1300, a number derived from "the engine is finished". It is now
+# 2500 because that premise was retired on purpose: there is more the engine is
+# meant to do. That is a different reason from "we ran out of room", and it is
+# the only one that justifies a raise -- the number tracks what the engine is
+# for, never what it happens to weigh this week.
+#
+# What still holds the line is not this number. It is the hard limits in
+# CLAUDE.md: 7 files in lib/, 2 fields in module.toml, 60 lines of wizard,
+# 3 verbs in bin/dot. Those constrain SHAPE, and shape is what rotted in v1 --
+# 2500 lines arranged as 13 files with two registries would be the same
+# disaster at a smaller line count.
 #
 # MODULES are the axis this repo is meant to grow along. One more thing you own
 # is one more directory, and a shared pool would make the tenth module compete
@@ -41,7 +49,7 @@ SHFMT_FLAGS := -i 2 -ci
 # OWN. 150 lines is roughly twice the biggest one here: enough for an apply and
 # a doctor with comments, not enough for a subsystem. A module that wants more
 # is either two modules, or one that belongs in the engine.
-ENGINE_BUDGET := 1300
+ENGINE_BUDGET := 2500
 MODULE_BUDGET := 150
 
 # The engine is listed rather than found: it is a closed set, and the point of

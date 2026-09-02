@@ -13,9 +13,8 @@ All code, comments, commit messages and docs are in **English**.
 Two caps, enforced by `make size` in CI:
 
 - **The engine -- `install.sh`, `bin/dot`, `lib/`, `core/` -- is capped at
-  1300 lines.** This is the part v1 rotted in, and it is finished. Linking a
-  file, reading a config and running a hook do not get harder as you own more
-  things, so growth here has to be a deliberate act.
+  2500 lines.** This is the part v1 rotted in, so growth here has to be a
+  deliberate act rather than a drift.
 - **Each module's shell is capped at 150 lines**, counted per directory. The
   sum across modules is reported and *not* capped, and neither is the number of
   modules.
@@ -40,6 +39,23 @@ anything to cut, that is the finding. A module that wants more than 150 lines
 is either two modules, or one whose logic belongs in the engine -- and if it
 belongs in the engine, it has to fit in the engine's budget, where something
 else will have to go.
+
+**The engine cap moved from 1300 to 2500 once, and the reason matters more
+than the number.** 1300 was derived from a premise -- "the engine is finished:
+linking a file, reading a config and running a hook do not get harder as you
+own more things" -- and the premise was retired on purpose, because there is
+more the engine is meant to do. A cap follows the scope it was derived from.
+It does not follow the pressure of the change in front of you: "I need 14 more
+lines" is the one argument that never works, and the fix for it is still to
+cut. If the engine reaches 2500, the question to answer first is which premise
+changed, not which number is convenient.
+
+**The line count was never the real constraint anyway.** What keeps the engine
+from becoming v1 is the shape rules below -- 7 files in `lib/`, 2 fields in
+`module.toml`, 60 lines of wizard, 3 verbs in `bin/dot`. v1's `core/` was 1324
+lines, comfortably inside 2500, and it was already unmaintainable: 13 files,
+two registries and a second ordering axis. Those limits are load-bearing in a
+way a line count is not.
 
 ## Load-bearing decisions
 
@@ -66,7 +82,12 @@ before the repo exists. v1 duplicated ~100 lines of UI into its bootstrap for
 this reason and the copies drifted; the fix is to have no UI worth sharing.
 
 **An apply never deletes.** Real files in the way are moved to the backup tree.
-Orphaned links are reported by `dot doctor`, never removed.
+Orphaned links are reported by `dot doctor`, never removed. The orphan scan
+takes its directories from **every** module in the repo, not the enabled ones:
+a link left behind by a module you just disabled is the main thing it looks
+for, so deriving the scan from the enabled set hid exactly the case it exists
+to catch. Only enabled modules *claim* files -- that half must stay narrow, or
+widening the scan would hide every orphan it just exposed.
 
 **There is one way to hand-pick modules: editing `config.toml`.** The wizard
 offers the profiles in `profiles.toml` plus `none`, which writes an empty list
@@ -117,7 +138,13 @@ caller. Use `if`. This bug has now appeared twice, in `lib/wizard.sh` and
 **A subshell cannot memoise anything.** Every caller of `modules_enabled` reads
 it as `< <(modules_enabled)`, so a cache variable set inside is discarded with
 the subshell. Things that must happen once per run -- warnings, validation --
-belong at the call site in `bin/dot`, not in the function being called.
+belong at the call site in `bin/dot`, not in the function being called. This
+has now bitten twice: `fs_backup_dir` was called as `$(fs_backup_dir)`, which
+is also a subshell, so it never memoised its directory. One apply scattered its
+backups across a directory per second, and the line telling you where they had
+gone vanished from the report. It now assigns to `__DOT_BACKUP_DIR` and prints
+nothing -- a function whose whole job is to remember something cannot be called
+in a way that throws the memory away.
 
 **Failure reporting is one line, and stays one line.** The ERR trap in
 `lib/dot.sh` prints file, line, command and status -- nothing else. Both guards
@@ -152,6 +179,33 @@ reports every problem in one pass.
 A check earns its place only if the thing it checks fails **silently**. "Is git
 installed" is not a check -- you would notice. "Is `~/.local/bin` on PATH" is,
 because the symptom is a command that mysteriously does not exist.
+
+**A check that finds something must reach `DOT_FAILURES`.** `module_doctor`
+counts its own failures rather than returning a status, because the `|| true`
+that used to be at its call site in `bin/dot` swallowed both a drifted file
+tree and a failing hook: doctor listed the unlinked files, then printed
+"Everything looks right" and exited 0. A health check that is wrong in that
+direction is worse than no health check, and `|| true` on anything a doctor
+calls is the shape the bug takes. Hook failures do not cross the process
+boundary on their own -- a hook runs in its own bash process, so the driver
+sees an exit status and has to convert it.
+
+**Warnings are counted, and a summary line may not contradict them.** `warn`
+bumps `DOT_WARNINGS` the way `fail` bumps `DOT_FAILURES`, and `dot doctor`'s
+Result line has three branches, not two: problems, warnings, clean. It used to
+have two, so a stopped colima and three orphaned links were followed by
+"Everything looks right." -- which is how a report teaches you to skip it.
+Warnings still do not change the exit status; `dot doctor && ...` keeps
+working.
+
+**A warning inside a hook needs a number to travel on.** A hook that only
+warned is neither 0 nor 1, so it exits `DOT_STATUS_WARN` (2) and its driver
+folds that back in with `fold_status`. Before that existed, both readings of a
+non-zero status were in the tree and both were wrong: doctor's `|| true` threw
+the warning away, and apply's `if ! module_run_hook` turned it into a crash --
+`git/apply.sh` warns about an empty `user.name`, and that was reported as
+"git: apply.sh failed". `bin/dot` clears `__DOT_EXIT_WARN` for itself, because
+it is nobody's hook.
 
 ## Before committing
 

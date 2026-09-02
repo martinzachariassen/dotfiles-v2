@@ -102,6 +102,16 @@ modules_enabled_dirs() {
   done < <(modules_enabled)
 }
 
+# Every module directory in the repo, enabled or not. fs_orphans scans these:
+# a link left behind by a module you just disabled is the main thing it looks
+# for, so the enabled set is the wrong input for deciding where to look.
+modules_all_dirs() {
+  local name
+  while IFS= read -r name; do
+    modules_dir "$name"
+  done < <(modules_all)
+}
+
 # --- Hooks -----------------------------------------------------------------
 #
 # apply.sh and doctor.sh are EXECUTED in a fresh bash process, never sourced.
@@ -132,19 +142,28 @@ module_apply() {
   brew_bundle "$dir/Brewfile" "$name"
   fs_link_tree "$dir"
 
-  if ! module_run_hook "$name" apply.sh; then
-    fail "$name: apply.sh failed"
-  fi
+  # Not `if ! module_run_hook`: that read every non-zero status as a crash, so
+  # the one `warn` in git/apply.sh -- an empty user.name, which the hook is
+  # written to shrug at -- was reported as "git: apply.sh failed".
+  fold_status "$name: apply.sh failed" module_run_hook "$name" apply.sh
 }
 
 # module_doctor NAME -- read-only checks. Never modifies anything.
+#
+# Counts its own failures rather than returning a status for the caller to
+# convert: bin/dot called this as `|| true`, which swallowed both a drifted
+# file tree and a failing doctor.sh, so `dot doctor` printed "Everything looks
+# right" over a module that was not linked at all. `fail` is the right verb
+# here for the same reason core uses it -- this is what stops the next apply.
+#
+# One summary line per module, not one per file: fs_check_tree already named
+# each path.
 module_doctor() {
-  local name=$1 dir failed=0
+  local name=$1 dir
   dir=$(modules_dir "$name")
 
-  fs_check_tree "$dir" || failed=1
-  module_run_hook "$name" doctor.sh || failed=1
-  return $failed
+  fs_check_tree "$dir" || fail "$name: files are not linked -- run: dot apply"
+  fold_status "$name: doctor.sh reported problems" module_run_hook "$name" doctor.sh
 }
 
 # True if any enabled module declares sudo = true, so the driver can prime the

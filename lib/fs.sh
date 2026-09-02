@@ -24,13 +24,18 @@ DOT_N_UNCHANGED=0
 # behind. One directory per `dot apply` invocation.
 __DOT_BACKUP_DIR=''
 
-# Absolute path of this run's backup directory, creating it on first use.
+# Point __DOT_BACKUP_DIR at this run's backup directory, creating it on first
+# use. Callers read the variable; this prints nothing on purpose.
+#
+# Never call it as `$(fs_backup_dir)`: a command substitution is a subshell, so
+# the memoised assignment dies with it (see docs/bash-guide.md). Written that
+# way, every collision re-ran `date` -- scattering one run's backups over
+# several directories -- and fs_report lost the line saying where they went.
 fs_backup_dir() {
   if [[ -z $__DOT_BACKUP_DIR ]]; then
     __DOT_BACKUP_DIR="$DOT_STATE/backups/$(date +%Y%m%d-%H%M%S)"
     [[ $DOT_DRY_RUN == 1 ]] || mkdir -p "$__DOT_BACKUP_DIR"
   fi
-  printf '%s\n' "$__DOT_BACKUP_DIR"
 }
 
 # Whether anything was backed up this run (drives the closing hint).
@@ -109,7 +114,8 @@ fs_link() {
     # A real file is moved aside; a symlink carries no data, so replacing one
     # needs no backup. Either way the link is created the same way afterwards.
     if [[ $state == clobbered ]]; then
-      backup="$(fs_backup_dir)/$rel"
+      fs_backup_dir
+      backup="$__DOT_BACKUP_DIR/$rel"
       mkdir -p "$(dirname "$backup")"
       mv "$dst" "$backup"
     else
@@ -171,7 +177,7 @@ fs_report() {
   fi
 
   if fs_backup_used; then
-    dim "Replaced files were moved to $(fs_backup_dir)"
+    dim "Replaced files were moved to $__DOT_BACKUP_DIR"
   fi
 }
 
@@ -185,10 +191,10 @@ fs_report() {
 # it fast and stops it from walking all of $HOME.
 fs_orphans() {
   # Two sets, as hash maps: every path an enabled module claims, and the
-  # directories those paths live in. `claimed` is a map rather than a list so
-  # that "did anyone claim this link?" is one lookup instead of a scan, and
-  # `roots` is a map because its whole job is to collapse duplicates -- the
-  # same directory is named by every file a module puts in it.
+  # directories to scan. `claimed` is a map so that "did anyone claim this
+  # link?" is one lookup instead of a scan, and `roots` is a map because its
+  # job is to collapse duplicates -- the same directory is named by every file
+  # a module puts in it.
   local -A claimed=() roots=()
   local dir src dst link target
   local -a scan
@@ -199,10 +205,22 @@ fs_orphans() {
   while IFS= read -r dir; do
     while IFS=$'\t' read -r src dst; do
       claimed[$dst]=1
-      roots[$(dirname "$dst")]=1
     done < <(fs_pairs "$dir")
   done < <(
     modules_enabled_dirs
+    printf '%s\n' "$DOT_ROOT/core"
+  )
+
+  # Where to look comes from EVERY module, not just the enabled ones. Both used
+  # to come from the enabled set, which made the main case invisible: disabling
+  # a module dropped its directory from the scan, so the links it left behind
+  # -- what this function is for -- were never looked at.
+  while IFS= read -r dir; do
+    while IFS=$'\t' read -r src dst; do
+      roots[$(dirname "$dst")]=1
+    done < <(fs_pairs "$dir")
+  done < <(
+    modules_all_dirs
     printf '%s\n' "$DOT_ROOT/core"
   )
 

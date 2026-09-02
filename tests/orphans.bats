@@ -13,6 +13,10 @@ setup() {
   REPO="$DOT_TMP/repo"
   MODULE="$REPO/modules/demo"
   mkdir -p "$MODULE/home/.config/demo"
+  # The manifest is what makes the module visible to the registry, and
+  # fs_orphans now takes its scan roots from there rather than from whatever
+  # is enabled. Without it the fixture is a directory the repo does not know.
+  printf 'description = "demo"\nsudo = false\n' >"$MODULE/module.toml"
   DOT_ROOT="$REPO"
 }
 
@@ -66,4 +70,30 @@ claim_one() {
   run fs_orphans
   [ "$status" -eq 0 ]
   [[ $output != *"invalid option"* ]]
+}
+
+@test "orphans: a link left behind by a DISABLED module is reported" {
+  # The case this function exists for, and the one it used to miss entirely.
+  # Scan roots were derived from the ENABLED modules, so switching a module off
+  # removed its directory from the scan and every link it had left behind
+  # became invisible -- `dot doctor` printed "none" over a home directory still
+  # full of them, which is the one situation where the report matters.
+  claim_one
+  modules_enabled_dirs() { :; } # the module is now disabled in the config
+
+  run fs_orphans
+  [ "$status" -eq 0 ]
+  [[ $output == *kept.conf* ]]
+}
+
+@test "orphans: a disabled module does not claim its files back" {
+  # The other half of the same fix: a disabled module still contributes where
+  # to look, but it must not contribute what counts as claimed -- otherwise
+  # widening the scan would quietly hide every orphan it just exposed.
+  claim_one
+  modules_enabled_dirs() { :; }
+
+  run fs_orphans
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
 }
