@@ -1,8 +1,10 @@
 # The interactive shell: everything that makes a terminal session what it is.
 #
 # zellij is here rather than in dev-cli because this module is the shell you
-# sit in, not a bag of tools -- the same reason starship is here. Ghostty (the
-# terminal window itself) is a cask, and lives in modules/apps.
+# sit in, not a bag of tools -- the same reason starship is here. The window
+# all of it runs inside is modules/ghostty, which owns both that cask and its
+# config; the line between the two is the terminal emulator versus what you
+# run in it.
 
 brew "starship"                # prompt
 brew "zellij"                  # terminal multiplexer

@@ -14,14 +14,13 @@
 # new machine. Everything else is a thing you install when you next want it,
 # and uninstall without editing a repo.
 #
-# The fonts are not a separate module because nothing enables them alone: they
-# exist for the terminal in the first section. Splitting them out would create
-# a module that is always on whenever this one is.
+# The fonts stay here rather than moving to modules/ghostty with the terminal,
+# because nothing enables them alone and no single module owns them: zellij's
+# bar and the starship prompt draw with the same glyphs the terminal does.
 
 # --- Daily drivers ----------------------------------------------------------
 cask "1password"     # SSH agent and git commit signing
 cask "1password-cli" # op; the SSH agent needs the app, not just this
-cask "ghostty"       # terminal
 cask "raycast"       # Spotlight replacement
 cask "claude"        # Claude desktop app
 cask "bruno"         # API client; local files, no account
@@ -42,7 +41,10 @@ cask "pearcleaner"          # uninstaller that finds the leftovers
 
 # --- Fonts ------------------------------------------------------------------
 # Both builds, deliberately. The Nerd Font is patched with the icon glyphs
-# Ghostty, zellij's bar and the starship prompt draw with; the plain one keeps
-# an editor on the stock metrics the font was designed for.
+# the terminal, zellij's bar and the starship prompt draw with; the plain one
+# keeps an editor on the stock metrics the font was designed for.
+#
+# modules/ghostty names the patched one in its font-family, so that config line
+# and this cask are one decision in two files.
 cask "font-jetbrains-mono"           # editors (unpatched)
 cask "font-jetbrains-mono-nerd-font" # terminals (patched, has the glyphs)
