@@ -143,10 +143,28 @@ It is the counterpart to `install.sh` rather than a fourth `dot` verb: `bin/dot`
 is capped at three, and the most destructive thing the repo can do does not
 belong behind the command you type every day.
 
-A full reset — links, generated files, config, every Homebrew package, Homebrew
-itself, and finally the checkout. **Xcode Command Line Tools are left
-installed**, being macOS developer plumbing rather than something this repo
-chose for you.
+A full reset — links, generated files, config, Homebrew, and finally the
+checkout. **Xcode Command Line Tools are left installed**, being macOS
+developer plumbing rather than something this repo chose for you.
+
+**Homebrew goes in its entirety, not just the packages this repo named.** Its
+uninstaller removes the whole Cellar and Caskroom and keeps no record of who
+asked for what, so a formula you installed by hand years ago goes with the
+rest. The preview counts this out rather than describing it, because the
+sentence version reads as "the packages this repo installed" and that is the
+one misreading that matters:
+
+```
+Homebrew and the repo
+  → uninstall Homebrew and all 113 packages it manages
+  ! 74 of those are named by no Brewfile here -- they go too
+  → remove  /Users/you/Developer/personal/dotfiles-v2
+  Apps installed as casks stay in /Applications, unmanaged.
+```
+
+That last line is not an oversight in this repo: Homebrew *moves* a cask's
+`.app` into `/Applications`, so it no longer resolves back into the Cellar and
+Homebrew's own uninstaller leaves it alone.
 
 Three things it will not do, and the reasons are the interesting part:
 

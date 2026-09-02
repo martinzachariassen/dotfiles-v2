@@ -91,6 +91,14 @@ execs *into* the repo, `uninstall.sh` execs *out* of it, into a throwaway
 script under `/tmp` that depends on neither. That turns "when does bash re-read
 a deleted script" into a question nobody has to answer.
 
+**A destructive summary states counts, not categories.** The confirmation line
+read "Homebrew and every package it installed" -- true, and read by everyone as
+"the packages this repo installed", when the answer is every package on the
+machine. It now counts: "all 113 packages it manages", then warns that 74 of
+them are named by no Brewfile here. This is doctor's Result line again, one
+verb over: a summary that lets you misread it is the bug, not the prose around
+it. Anything irreversible gets a number.
+
 **An uninstall is derived, not recorded.** No state file, for the same reason
 `fs_orphans` needs none: the filesystem already records every link. An
 uninstall is the orphan scan with nothing enabled, so every link into the repo

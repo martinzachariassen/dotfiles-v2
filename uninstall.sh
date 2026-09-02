@@ -80,9 +80,11 @@ if [[ $DOT_DRY_RUN != 1 ]]; then
 
   "$BASH" "$0" --dry-run || die 'The preview failed; nothing was changed.'
 
+  # No second description of the work. Summarising the preview in prose here is
+  # how the old wording -- "every package it installed" -- came to say something
+  # narrower than what the preview above had just counted.
   heading 'Confirm'
-  say 'That is everything above, plus Homebrew and every package it installed,'
-  say "plus $DOT_ROOT itself."
+  say 'Everything listed above will be removed, and there is no undo.'
   printf '  Type %sremove%s to continue: ' "$__C_BOLD" "$__C_RESET"
   read -r answer
   [[ $answer == remove ]] || die 'Nothing was changed.'
@@ -163,6 +165,38 @@ else
   say 'None to keep.'
 fi
 
+# brew_headcount -- print "<packages managed> <packages this repo never named>".
+#
+# This line used to read "Homebrew and every package it installed", which is
+# true and which reads as "the packages this repo installed". That is the one
+# misreading that matters, because the answer is every package on the machine:
+# Homebrew's uninstaller removes the whole Cellar and Caskroom and keeps no
+# record of who asked for what, so a formula you installed by hand three years
+# ago goes with the rest. A count is harder to misread than a sentence -- the
+# same lesson as doctor's Result line, which said "Everything looks right" over
+# a list of orphaned links until it started reading its own tallies.
+brew_headcount() {
+  local installed repo bundle
+  command -v brew >/dev/null 2>&1 || return 1
+
+  installed=$(mktemp) repo=$(mktemp) bundle=$(mktemp)
+  {
+    brew list --formula
+    brew list --cask
+  } 2>/dev/null | sort -u >"$installed"
+
+  # --all because `brew bundle list` defaults to formulae only, which would
+  # count every cask in modules/apps as one this repo never named.
+  cat "$DOT_ROOT"/core/Brewfile "$DOT_ROOT"/modules/*/Brewfile 2>/dev/null >"$bundle"
+  brew bundle list --all --file "$bundle" 2>/dev/null | sort -u >"$repo"
+
+  printf '%s %s\n' \
+    "$(wc -l <"$installed" | tr -d ' ')" \
+    "$(comm -23 "$installed" "$repo" | wc -l | tr -d ' ')"
+
+  rm -f "$installed" "$repo" "$bundle"
+}
+
 # --- Handoff --------------------------------------------------------------------------
 heading 'Homebrew and the repo'
 
@@ -173,8 +207,22 @@ if ((DOT_FAILURES > 0)); then
 fi
 
 if [[ $DOT_DRY_RUN == 1 ]]; then
-  info 'uninstall Homebrew and every package installed through it'
+  # `read` runs in this shell; only the process substitution is a subshell, so
+  # both numbers survive. See docs/bash-guide.md.
+  if read -r n_all n_foreign < <(brew_headcount); then
+    info "uninstall Homebrew and all $n_all packages it manages"
+    # A warning, because this is the part nobody expects: those packages are
+    # not this repo's, and it is removing them anyway.
+    ((n_foreign == 0)) ||
+      warn "$n_foreign of those are named by no Brewfile here -- they go too"
+  else
+    info 'uninstall Homebrew and every package it manages'
+  fi
   info "remove  $DOT_ROOT"
+  # Left behind on purpose, and worth saying because the leftovers are large
+  # and invisible: Homebrew MOVES a cask's .app into /Applications, so it does
+  # not resolve back into the Cellar and its own uninstaller does not touch it.
+  dim 'Apps installed as casks stay in /Applications, unmanaged.'
   heading 'Dry run'
   dim 'Nothing was changed.'
   exit 0
