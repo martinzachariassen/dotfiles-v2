@@ -1,171 +1,206 @@
-# Minimal two-line prompt: identity/git context on line one, a bare arrow on
-# line two so commands always start at column 0 regardless of path depth.
-# Palette is the official Catppuccin Frappe table (starship.rs/presets --
-# catppuccin-powerline uses the same one), not a hand-picked subset, so any
-# future module addition has the full 26 colors to draw from.
+# Latte, not Frappe/Mocha: the ghostty pane background is light, and Latte is
+# the only Catppuccin flavor built for a light base -- the others assume a
+# dark pane and read too pale against a light one.
+#
+# Structure follows github.com/martinzachariassen/dotfiles's starship.toml --
+# plain inline segments ("on branch", "via lang") instead of Powerline blocks,
+# which need a specific bg color on every edge to butt segments together.
 "$schema" = 'https://starship.rs/config-schema.json'
 
+palette = "catppuccin_latte"
+
 format = """
-$username\
-$hostname\
+$os$username$hostname\
 $directory\
-$git_branch\
-$git_state\
-$git_status\
-$fill\
-$jobs\
+$git_branch$git_state$git_status\
+$c$rust$golang$nodejs$bun$php$java$kotlin$haskell$python\
+$docker_context\
+$conda\
+$time\
 $cmd_duration\
 $line_break\
 $character"""
 
 add_newline = true
+command_timeout = 2000
 
-palette = "frappe"
+# install.sh refuses to run on anything but Darwin/arm64, so this is the
+# only OS symbol that can ever render here.
+[os]
+disabled = false
+style = "overlay0"
 
-[palettes.frappe]
-rosewater = "#f2d5cf"
-flamingo  = "#eebebe"
-pink      = "#f4b8e4"
-mauve     = "#ca9ee6"
-red       = "#e78284"
-maroon    = "#ea999c"
-peach     = "#ef9f76"
-yellow    = "#e5c890"
-green     = "#a6d189"
-teal      = "#81c8be"
-sky       = "#99d1db"
-sapphire  = "#85c1dc"
-blue      = "#8caaee"
-lavender  = "#babbf1"
-text      = "#c6d0f5"
-subtext1  = "#b5bfe2"
-subtext0  = "#a5adce"
-overlay2  = "#949cbb"
-overlay1  = "#838ba7"
-overlay0  = "#737994"
-surface2  = "#626880"
-surface1  = "#51576d"
-surface0  = "#414559"
-base      = "#303446"
-mantle    = "#292c3c"
-crust     = "#232634"
+[os.symbols]
+Macos = "󰀵 "
 
-# Only appears for root or when $USER differs from the login user -- e.g. a
-# sudo'd shell or a container -- so a normal local session shows nothing here.
+# show_always = false: only appears for root or when $USER differs from the
+# login user -- e.g. a sudo'd shell or a container -- so a normal local
+# session shows nothing here.
 [username]
-style_user = "bold yellow"
-style_root = "bold red"
-format     = "[$user]($style)[@](overlay0)"
 show_always = false
+style_user = "bold red"
+style_root = "bold red"
+format = "[$user]($style) "
 
-# ssh_only means this whole segment is invisible on a local machine and only
-# shows up over SSH, which is exactly when "which box am I on" matters.
+# ssh_only: invisible on a local shell, shows up over SSH -- exactly when
+# "which box am I on" matters.
 [hostname]
 ssh_only = true
-style    = "bold peach"
-format   = "[$hostname]($style) "
+style = "bold peach"
+format = "[@$hostname]($style) "
 
 [directory]
-style             = "bold blue"
+style = "bold blue"
 truncation_length = 3
 truncation_symbol = "…/"
-format            = "[$path]($style)[$read_only]($read_only_style) "
-read_only         = " 󰌾"
-read_only_style   = "red"
+home_symbol = "~"
+read_only = " 󰌾"
+read_only_style = "red"
+format = "[$path]($style)[$read_only]($read_only_style) "
 
 [directory.substitutions]
-"~/Developer" = "󰲋 "
-"~/Downloads" = " "
-"~/Documents" = "󰈙 "
+"Documents" = "󰈙 "
+"Downloads" = " "
+"Music" = "󰝚 "
+"Pictures" = " "
+"Developer" = "󰲋 "
 
 [git_branch]
 symbol = " "
-style  = "bold mauve"
-format = "[on ](overlay0)[$symbol$branch]($style) "
+style = "lavender"
+truncation_length = 32
+format = "on [$symbol$branch]($style) "
 
-# Only renders during an actual rebase/merge/cherry-pick/bisect -- silent the
-# rest of the time, but the one moment it matters (mid-rebase, 3/7 commits in)
-# it's the difference between guessing and knowing.
+# Only renders mid-rebase/merge/cherry-pick/bisect -- the one moment it
+# matters (3/7 commits in) it's the difference between guessing and knowing.
 [git_state]
-style  = "bold peach"
+style = "bold peach"
 format = '\([$state( $progress_current/$progress_total)]($style)\) '
 
 [git_status]
-style      = "yellow"
-format     = "([$all_status$ahead_behind]($style)) "
-conflicted = "="
-ahead      = "⇡${count}"
-behind     = "⇣${count}"
-diverged   = "⇕⇡${ahead_count}⇣${behind_count}"
-untracked  = "?${count}"
-stashed    = "*${count}"
-modified   = "!${count}"
-staged     = "+${count}"
-renamed    = "»${count}"
-deleted    = "✘${count}"
+style = "peach"
+ahead = "⇡${count} "
+behind = "⇣${count} "
+diverged = "⇕⇡${ahead_count}⇣${behind_count} "
+modified = "!${count} "
+untracked = "?${count} "
+stashed = "≡ "
+staged = "+${count} "
+conflicted = "✗ "
+format = "[$all_status$ahead_behind]($style)"
 
-# Pushes jobs/cmd_duration to the right edge of the terminal without a
-# right_format block (which would print on its own timing pass).
-[fill]
+[c]
 symbol = " "
+style = "sapphire"
+format = "via [$symbol($version )]($style)"
 
-# Background jobs (Ctrl-Z'd or `&`) are easy to forget about; a silent count
-# is cheaper than `jobs` and only shows up when there's something to lose.
-[jobs]
-symbol = "✦"
-style  = "bold sapphire"
-format = "[$symbol$number]($style) "
+[rust]
+symbol = " "
+style = "red"
+format = "via [$symbol($version )]($style)"
+
+[golang]
+symbol = " "
+style = "sapphire"
+format = "via [$symbol($version )]($style)"
+
+[nodejs]
+symbol = " "
+style = "green"
+format = "via [$symbol($version )]($style)"
+
+[bun]
+symbol = " "
+style = "yellow"
+format = "via [$symbol($version )]($style)"
+
+[php]
+symbol = " "
+style = "mauve"
+format = "via [$symbol($version )]($style)"
+
+[java]
+symbol = " "
+style = "red"
+format = "via [$symbol($version )]($style)"
+
+[kotlin]
+symbol = " "
+style = "mauve"
+format = "via [$symbol($version )]($style)"
+
+[haskell]
+symbol = " "
+style = "lavender"
+format = "via [$symbol($version )]($style)"
+
+[python]
+symbol = " "
+style = "yellow"
+format = 'via [${symbol}${pyenv_prefix}(${version} )(\($virtualenv\) )]($style)'
+
+[docker_context]
+symbol = " "
+style = "blue"
+format = "via [$symbol$context]($style) "
+
+[conda]
+symbol = " "
+style = "sapphire"
+format = "via [$symbol$environment ]($style)"
+ignore_base = false
+
+[time]
+disabled = false
+time_format = "%R"
+style = "overlay1"
+format = "at [$time]($style) "
 
 [cmd_duration]
-min_time = 2000
-style    = "dimmed subtext0"
-format   = "took [$duration]($style) "
+min_time = 2_000
+show_milliseconds = true
+show_notifications = true
+min_time_to_notify = 45000
+format = "took [$duration](peach) "
 
+# The format string ends with $line_break$character; disabling this collapses
+# that onto one line and the prompt character stops sitting at column 0.
 [line_break]
 disabled = false
 
 [character]
+disabled = false
 success_symbol = "[❯](bold green)"
-error_symbol   = "[❯](bold red)"
-vicmd_symbol   = "[❮](bold yellow)"
+error_symbol = "[❯](bold red)"
+vimcmd_symbol = "[❮](bold green)"
+vimcmd_replace_one_symbol = "[❮](bold lavender)"
+vimcmd_replace_symbol = "[❮](bold lavender)"
+vimcmd_visual_symbol = "[❮](bold yellow)"
 
-# Runtime/tool segments: only fire when the directory actually matches
-# (starship's default detection), kept visually consistent with the rest.
-[nodejs]
-symbol = " "
-style  = "green"
-
-[python]
-symbol = " "
-style  = "green"
-format = '[${symbol}${pyenv_prefix}(${version} )(\($virtualenv\) )]($style)'
-
-[rust]
-symbol = " "
-style  = "red"
-
-[golang]
-symbol = " "
-style  = "blue"
-
-[docker_context]
-symbol = " "
-style  = "blue"
-
-[package]
-disabled = true
-
-[battery]
-disabled = true
-
-[gcloud]
-disabled = true
-
-[aws]
-disabled = true
-
-[kubernetes]
-disabled = true
-
-[time]
-disabled = true
+[palettes.catppuccin_latte]
+rosewater = "#dc8a78"
+flamingo = "#dd7878"
+pink = "#ea76cb"
+mauve = "#8839ef"
+red = "#d20f39"
+maroon = "#e64553"
+peach = "#fe640b"
+yellow = "#df8e1d"
+green = "#40a02b"
+teal = "#179299"
+sky = "#04a5e5"
+sapphire = "#209fb5"
+blue = "#1e66f5"
+lavender = "#7287fd"
+text = "#4c4f69"
+subtext1 = "#5c5f77"
+subtext0 = "#6c6f85"
+overlay2 = "#7c7f93"
+overlay1 = "#8c8fa1"
+overlay0 = "#9ca0b0"
+surface2 = "#acb0be"
+surface1 = "#bcc0cc"
+surface0 = "#ccd0da"
+base = "#eff1f5"
+mantle = "#e6e9ef"
+crust = "#dce0e8"
