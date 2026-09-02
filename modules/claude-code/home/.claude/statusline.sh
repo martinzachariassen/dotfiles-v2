@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Claude Code status line: model · dir · git · context, one line.
+# Claude Code status line, two lines.
+#   Line 1 -- identity: model + effort · dir · session tag · git · session diff · PR
+#   Line 2 -- budget: context gauge | 5h/7d quota + reset countdown
 #
 # ANSI-16 colors only, no hardcoded hex, so the bar follows whatever terminal
 # theme is active instead of fighting it. Icons are Nerd Font glyphs already
@@ -14,10 +16,17 @@ RESET=$'\033[0m' BOLD=$'\033[1m' DIM=$'\033[2m'
 RED=$'\033[31m' GREEN=$'\033[32m' YELLOW=$'\033[33m'
 BLUE=$'\033[34m' MAGENTA=$'\033[35m' CYAN=$'\033[36m'
 SEP=" ${DIM}·${RESET} "
+DIVIDER=" ${DIM}|${RESET} "
 
-I_DIR=$''    # fa-folder
-I_BRANCH=$'' # pl-branch -- matches starship's git_branch symbol
-I_CTX=$'󰍛'   # md-memory
+I_DIR=$''           # fa-folder
+I_BRANCH=$''        # pl-branch -- matches starship's git_branch symbol
+I_TAG=$''           # fa-tag
+I_DIFF=$''          # oct-diff -- session edits, so +N stays unambiguous next to git's own +N
+I_PR=$''            # oct-git_pull_request
+I_OK=$''            # fa-check
+I_NO=$''            # fa-times
+I_CTX=$'\U000f035b' # md-memory
+I_RESET_ICO=$''     # fa-refresh -- rate-limit reset countdown
 
 # 1234 -> 1k, 1000000 -> 1.0M.
 fmt_tokens() {
@@ -28,6 +37,26 @@ fmt_tokens() {
     printf '%dk' $((n / 1000))
   else
     printf '%d' "$n"
+  fi
+}
+
+# Countdown to a reset. Sub-minute collapses to "<1m" so it stops flickering
+# once it no longer changes any decision.
+fmt_eta() {
+  local s=$1
+  if ((s < 0)); then s=0; fi
+  if ((s >= 86400)); then
+    if (((s % 86400) / 3600 > 0)); then
+      printf '%dd%dh' $((s / 86400)) $(((s % 86400) / 3600))
+    else
+      printf '%dd' $((s / 86400))
+    fi
+  elif ((s >= 3600)); then
+    printf '%dh%02dm' $((s / 3600)) $(((s % 3600) / 60))
+  elif ((s >= 60)); then
+    printf '%dm' $((s / 60))
+  else
+    printf '<1m'
   fi
 }
 
@@ -43,31 +72,73 @@ pct_color() {
   fi
 }
 
+# low/medium/high/xhigh/max -> lowercase, medium shortened. Plain lowercase
+# (not the original's uppercase) so it doesn't read as a mismatched font next
+# to the mixed-case model name beside it.
+effort_label() {
+  case "$1" in
+    medium) printf 'med' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
 trunc() {
   local max=$1 s=$2
   if ((${#s} > max)); then printf '%s…' "${s:0:max-1}"; else printf '%s' "$s"; fi
 }
 
+# Wrap text in an OSC 8 hyperlink (Cmd/Ctrl-click in supporting terminals).
+osc8() {
+  local esc=$'\033' st=$'\033\\'
+  printf '%s]8;;%s%s%s%s]8;;%s' "$esc" "$1" "$st" "$2" "$esc" "$st"
+}
+
 # One jq call: its startup cost dominates runtime, so every field comes out
 # of a single pass with \037 (a byte that cannot appear in the values) as the
-# join separator.
+# join separator. Control characters are stripped since they'd otherwise
+# break that delimited read.
 fields="$(jq -r '
-    def clean: if . == null then "" else tostring end;
+    def clean: if . == null then "" else tostring | gsub("[[:cntrl:]]"; " ") end;
+    def num: if . == null then 0 else . end;
     [ (.model.display_name // "?" | clean),
       (.workspace.current_dir // "" | clean),
       (.session_id // "" | clean),
-      (.context_window.used_percentage // 0 | floor | tostring),
-      (.context_window.total_input_tokens // 0 | tostring),
-      (.context_window.context_window_size // 0 | tostring)
+      (.session_name // "" | clean),
+      (.effort.level // "" | clean),
+      (.context_window.used_percentage | num | floor | tostring),
+      (.context_window.total_input_tokens | num | tostring),
+      (.context_window.context_window_size | num | tostring),
+      (.cost.total_lines_added | num | tostring),
+      (.cost.total_lines_removed | num | tostring),
+      (.pr.number // "" | tostring),
+      (.pr.url // "" | clean),
+      (.pr.review_state // "" | clean),
+      (if .rate_limits.five_hour then (.rate_limits.five_hour.used_percentage | num | floor | tostring) else "" end),
+      (if .rate_limits.five_hour.resets_at then (.rate_limits.five_hour.resets_at - now | floor | tostring) else "" end),
+      (if .rate_limits.seven_day then (.rate_limits.seven_day.used_percentage | num | floor | tostring) else "" end),
+      (if .rate_limits.seven_day.resets_at then (.rate_limits.seven_day.resets_at - now | floor | tostring) else "" end)
     ] | join("")' <<<"$input")"
-IFS=$'\037' read -r MODEL DIR SESSION_ID PCT USED_TOKENS CTX_SIZE <<<"$fields"
-SESSION_ID=${SESSION_ID:-default}
 
-OUT="${CYAN}${BOLD}${MODEL}${RESET}"
+IFS=$'\037' read -r \
+  MODEL DIR SESSION_ID SESSION_NAME EFFORT PCT USED_TOKENS CTX_SIZE \
+  LINES_ADDED LINES_REMOVED PR_NUMBER PR_URL PR_STATE \
+  FIVE_H FIVE_H_ETA SEVEN_D SEVEN_D_ETA <<<"$fields"
+
+SESSION_ID=${SESSION_ID:-default}
+PCT=${PCT:-0} LINES_ADDED=${LINES_ADDED:-0} LINES_REMOVED=${LINES_REMOVED:-0} CTX_SIZE=${CTX_SIZE:-0}
+
+# ============================ line 1: identity ============================
+LINE1="${CYAN}${BOLD}${MODEL}${RESET}"
+[[ -n $EFFORT ]] && LINE1+=" ${DIM}$(effort_label "$EFFORT")${RESET}"
 
 if [[ -n $DIR ]]; then
   D="$(trunc 30 "${DIR##*/}")"
-  OUT+="${SEP}${DIM}${I_DIR}${RESET} ${BLUE}${BOLD}${D}${RESET}"
+  LINE1+="${SEP}${DIM}${I_DIR}${RESET} ${BLUE}${BOLD}${D}${RESET}"
+fi
+
+if [[ -n $SESSION_NAME ]]; then
+  S="$(trunc 28 "$SESSION_NAME")"
+  LINE1+="${SEP}${DIM}${I_TAG}${RESET} ${DIM}${S}${RESET}"
 fi
 
 # Cached per session for a few seconds: the bar re-renders on every keystroke,
@@ -82,17 +153,23 @@ if [[ -n $DIR ]] && git -C "$DIR" rev-parse --git-dir >/dev/null 2>&1; then
   if ((age > 5)); then
     git -C "$DIR" status --porcelain=v2 --branch 2>/dev/null | awk '
             /^# branch.head / { head = $3 }
+            /^# branch.ab / { ahead = $3; behind = $4 }
             /^[12] / {
                 if (substr($2, 1, 1) != ".") staged++
                 if (substr($2, 2, 1) != ".") modified++
             }
             /^u / { conflicts++ }
             /^\? / { untracked++ }
-            END { printf "%s|%d|%d|%d|%d\n", head, staged+0, modified+0, untracked+0, conflicts+0 }
-        ' >"$cache" || printf '||||\n' >"$cache"
+            END {
+                gsub(/[+-]/, "", ahead); gsub(/[+-]/, "", behind)
+                printf "%s|%d|%d|%d|%d|%d|%d\n", head, staged+0, modified+0, \
+                    untracked+0, ahead+0, behind+0, conflicts+0
+            }
+        ' >"$cache" || printf '||||||\n' >"$cache"
   fi
-  IFS='|' read -r BRANCH STAGED MODIFIED UNTRACKED CONFLICTS <"$cache"
-  STAGED=${STAGED:-0} MODIFIED=${MODIFIED:-0} UNTRACKED=${UNTRACKED:-0} CONFLICTS=${CONFLICTS:-0}
+  IFS='|' read -r BRANCH STAGED MODIFIED UNTRACKED AHEAD BEHIND CONFLICTS <"$cache"
+  STAGED=${STAGED:-0} MODIFIED=${MODIFIED:-0} UNTRACKED=${UNTRACKED:-0}
+  AHEAD=${AHEAD:-0} BEHIND=${BEHIND:-0} CONFLICTS=${CONFLICTS:-0}
   if [[ -n $BRANCH && $BRANCH != '(detached)' ]]; then
     B="$(trunc 32 "$BRANCH")"
     G="${DIM}${I_BRANCH}${RESET} ${MAGENTA}${B}${RESET}"
@@ -100,13 +177,58 @@ if [[ -n $DIR ]] && git -C "$DIR" rev-parse --git-dir >/dev/null 2>&1; then
     ((MODIFIED > 0)) && G+=" ${YELLOW}!${MODIFIED}${RESET}"
     ((UNTRACKED > 0)) && G+=" ${BLUE}?${UNTRACKED}${RESET}"
     ((CONFLICTS > 0)) && G+=" ${RED}✗${CONFLICTS}${RESET}"
-    OUT+="${SEP}${G}"
+    ((AHEAD > 0)) && G+=" ${CYAN}⇡${AHEAD}${RESET}"
+    ((BEHIND > 0)) && G+=" ${CYAN}⇣${BEHIND}${RESET}"
+    LINE1+="${SEP}${G}"
   fi
 fi
 
-if ((CTX_SIZE > 0)); then
-  T="$(fmt_tokens "$USED_TOKENS")/$(fmt_tokens "$CTX_SIZE")"
-  OUT+="${SEP}${DIM}${I_CTX}${RESET} $(pct_color "$PCT")${PCT}%${RESET} ${DIM}${T}${RESET}"
+# Session edits carry their own icon: without it, "+120" sits next to git's
+# own "+3" meaning something entirely different.
+if ((LINES_ADDED > 0 || LINES_REMOVED > 0)); then
+  LINE1+="${SEP}${DIM}${I_DIFF}${RESET} ${GREEN}+${LINES_ADDED}${RESET}${DIM}/${RESET}${RED}-${LINES_REMOVED}${RESET}"
 fi
 
-printf '%s\n' "$OUT"
+if [[ -n $PR_NUMBER ]]; then
+  case "$PR_STATE" in
+    approved) PR_TEXT="${GREEN}${I_OK} #${PR_NUMBER}${RESET}" ;;
+    changes_requested) PR_TEXT="${RED}${I_NO} #${PR_NUMBER}${RESET}" ;;
+    draft) PR_TEXT="${DIM}${I_PR} #${PR_NUMBER} draft${RESET}" ;;
+    *) PR_TEXT="${YELLOW}${I_PR} #${PR_NUMBER}${RESET}" ;;
+  esac
+  [[ -n $PR_URL ]] && PR_TEXT="$(osc8 "$PR_URL" "$PR_TEXT")"
+  LINE1+="${SEP}${PR_TEXT}"
+fi
+
+# ============================ line 2: budget ============================
+BAR_WIDTH=14
+FILLED=$((PCT * BAR_WIDTH / 100))
+((FILLED > BAR_WIDTH)) && FILLED=$BAR_WIDTH
+EMPTY=$((BAR_WIDTH - FILLED))
+BAR=""
+((FILLED > 0)) && printf -v tmp '%*s' "$FILLED" '' && BAR+="${tmp// /█}"
+((EMPTY > 0)) && printf -v tmp '%*s' "$EMPTY" '' && BAR+="${tmp// /░}"
+BAR_COLOR="$(pct_color "$PCT")"
+
+LINE2="${DIM}${I_CTX}${RESET} ${BAR_COLOR}${BAR}${RESET} ${BAR_COLOR}${PCT}%${RESET}"
+if ((CTX_SIZE > 0)); then
+  T="$(fmt_tokens "$USED_TOKENS")/$(fmt_tokens "$CTX_SIZE")"
+  LINE2+="${SEP}${DIM}${T}${RESET}"
+fi
+
+# Quota percentage answers "how much is left"; the countdown answers "for how
+# long" -- the colon ties the window label tight to its value, the same way
+# "+84/-12" and "84k/200k" stay tight elsewhere on the bar.
+QUOTA=""
+if [[ -n $FIVE_H ]]; then
+  QUOTA="5h${DIM}:${RESET}$(pct_color "$FIVE_H")${FIVE_H}%${RESET}"
+  [[ -n $FIVE_H_ETA ]] && QUOTA+=" ${DIM}${I_RESET_ICO} $(fmt_eta "$FIVE_H_ETA")${RESET}"
+fi
+if [[ -n $SEVEN_D ]]; then
+  [[ -n $QUOTA ]] && QUOTA+="$SEP"
+  QUOTA+="7d${DIM}:${RESET}$(pct_color "$SEVEN_D")${SEVEN_D}%${RESET}"
+  [[ -n $SEVEN_D_ETA ]] && QUOTA+=" ${DIM}${I_RESET_ICO} $(fmt_eta "$SEVEN_D_ETA")${RESET}"
+fi
+[[ -n $QUOTA ]] && LINE2+="${DIVIDER}${QUOTA}"
+
+printf '%s\n%s\n' "$LINE1" "$LINE2"
