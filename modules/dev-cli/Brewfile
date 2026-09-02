@@ -1,8 +1,9 @@
 # Development tooling beyond the baseline in core/Brewfile.
 #
-# No apply.sh: the whole module is this file plus two lines of metadata and a
-# home/ leaf, which is the point -- adding a set of tools should not require
-# inventing any structure.
+# Mostly packages-only: this file, two lines of metadata, and a home/ leaf.
+# apply.sh exists for one thing -- mise ships a CLI here but the runtimes it
+# manages live in home/.config/mise/config.toml, and linking that file does
+# not install anything.
 #
 # Short on purpose. A tool earns a line here by being one you would install by
 # hand on a fresh machine within the first week; anything you reach for twice a
@@ -10,6 +11,7 @@
 
 brew "gh"       # GitHub CLI
 brew "gitleaks" # secret scanning
+brew "jq"       # JSON on the command line -- modules/claude-code/home/.claude/statusline.sh depends on it
 brew "lazygit"  # git TUI
 brew "mise"     # language runtimes (brew owns CLIs, mise owns runtimes)
 brew "zoxide"   # smarter cd
