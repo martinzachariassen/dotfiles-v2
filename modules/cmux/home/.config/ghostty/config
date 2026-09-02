@@ -6,3 +6,8 @@
 # `false` keeps Option producing those characters everywhere, same as outside
 # the terminal.
 macos-option-as-alt = false
+
+# Nerd Font glyphs (statusline icons, git-branch symbol) render as tofu boxes
+# without this. "Mono" variant keeps icon glyphs locked to one cell width.
+# Installed via: brew install --cask font-jetbrains-mono-nerd-font
+font-family = "JetBrainsMono Nerd Font Mono"
