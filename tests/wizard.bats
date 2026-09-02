@@ -57,6 +57,27 @@ in_strict_shell() {
   [ "$output" = "git" ]
 }
 
+@test "picker: preset rows are pre-toggled, not just starred" {
+  # Regression. `*` is cosmetic to fzf -- it never touched --multi's selection
+  # state, so a user who picked "personal" and just hit Enter (no manual Tabs)
+  # got only the highlighted row, not the profile. `--bind load:pos(N)+toggle`
+  # must drive the same toggle a Tab would, once per preset row.
+  fzf() {
+    printf '%s\n' "$*" >"$DOT_TMP/fzf_args"
+    cat
+  }
+  wizard_pick_modules "$(printf 'dev-cli\nzsh\n')" >/dev/null
+
+  local i=0 name expected=''
+  while IFS= read -r name; do
+    i=$((i + 1))
+    case $name in dev-cli | zsh) expected+="pos($i)+toggle+" ;; esac
+  done < <(modules_all)
+
+  run cat "$DOT_TMP/fzf_args"
+  [[ $output == *"--bind load:${expected}first"* ]]
+}
+
 @test "picker: cancelling fzf yields nothing instead of killing the run" {
   # Regression. Esc makes fzf exit 130; inside `modules=$(...)` under `set -e`
   # that aborted the whole of `dot apply`, which also made the empty-result

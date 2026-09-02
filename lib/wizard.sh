@@ -26,14 +26,30 @@ __wizard_cancel() {
 # "Extra" into the config. `--with-nth=2` renders only the pretty column while
 # the full line, name included, still comes back on stdout.
 wizard_pick_modules() {
-  local preset=$1 name mark
-  while IFS= read -r name; do
+  local preset=$1 name mark i=0 preselect=''
+  local -a names
+  mapfile -t names < <(modules_all)
+
+  # Built here, in the main shell, and not inside the pipeline below: that
+  # pipeline's `while` runs in a subshell, so a `preselect` grown inside it
+  # vanishes the moment the pipe closes (shellcheck SC2031). `*` is cosmetic
+  # to fzf -- it never touches --multi's selection state -- so without this,
+  # Enter on an untouched picker returns only the highlighted row, not every
+  # starred one. `pos(N)+toggle` drives the same toggle a manual Tab would,
+  # once per preset row, so the profile you picked is what Enter confirms.
+  for name in "${names[@]}"; do
+    i=$((i + 1))
+    grep -qxF -- "$name" <<<"$preset" && preselect+="pos($i)+toggle+"
+  done
+
+  for name in "${names[@]}"; do
     mark=' '
     grep -qxF -- "$name" <<<"$preset" && mark='*'
     printf '%s\t%s %-20s %s\n' "$name" "$mark" "$name" "$(module_desc "$name")"
-  done < <(modules_all) |
+  done |
     fzf --multi --height=60% --reverse --prompt='Modules > ' \
       --delimiter=$'\t' --with-nth=2 \
+      --bind "load:${preselect}first" \
       --header='TAB to toggle, Enter to confirm, Esc to abort. * = in the profile.' |
     cut -f1 || true
 }
