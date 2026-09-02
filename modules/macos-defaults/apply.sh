@@ -91,12 +91,12 @@ defaults write com.apple.screencapture location -string "$screenshot_dir"
 defaults write com.apple.screencapture disable-shadow -bool true # ~100px padding
 
 # --- Apply ------------------------------------------------------------------
-# These read preferences at launch only. WindowManager must be listed or the
-# click-to-show-desktop write does nothing until logout; NSGlobalDomain is not
-# flushable this way at all, hence the logout note below. `|| true` despite
-# modules/CLAUDE.md: killall exits 1 when a process is not running, not a fail.
+# These read preferences at launch only; NSGlobalDomain cannot be flushed this
+# way at all, hence the warn below. `|| true`: killall exits 1 when a process
+# is not running, which is not a failure.
 for app in Dock Finder SystemUIServer WindowManager; do
   killall "$app" >/dev/null 2>&1 || true
 done
 
-ok 'macOS defaults written (some changes need a logout to appear everywhere)'
+ok 'macOS defaults written'
+warn 'log out and back in for keyboard and text-substitution changes to fully apply'

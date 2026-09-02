@@ -47,7 +47,7 @@ wrote() { grep -qF "$1" "$CALLS"; }
 @test "tilesize: a number is passed through" {
   with_settings 'dock_tilesize = 64'
   apply
-  [ "$status" -eq 0 ]
+  [ "$status" -eq "$DOT_STATUS_WARN" ] # the logout reminder always warns
   wrote 'com.apple.dock tilesize -int 64'
 }
 
@@ -91,7 +91,7 @@ wrote() { grep -qF "$1" "$CALLS"; }
 @test "screenshots: a relative path is taken from \$HOME" {
   with_settings 'screenshot_dir = "Pictures/Shots"'
   apply
-  [ "$status" -eq 0 ]
+  [ "$status" -eq "$DOT_STATUS_WARN" ] # the logout reminder always warns
   wrote "com.apple.screencapture location -string $HOME/Pictures/Shots"
   [ -d "$HOME/Pictures/Shots" ]
 }
@@ -102,7 +102,7 @@ wrote() { grep -qF "$1" "$CALLS"; }
   # went somewhere the user had no reason to look.
   with_settings "screenshot_dir = \"$DOT_TMP/shots\""
   apply
-  [ "$status" -eq 0 ]
+  [ "$status" -eq "$DOT_STATUS_WARN" ] # the logout reminder always warns
   wrote "com.apple.screencapture location -string $DOT_TMP/shots"
   [ ! -d "$HOME$DOT_TMP" ]
 }
@@ -112,7 +112,7 @@ wrote() { grep -qF "$1" "$CALLS"; }
   # in. Unhandled, this made a directory whose name was "~".
   with_settings 'screenshot_dir = "~/Shots"'
   apply
-  [ "$status" -eq 0 ]
+  [ "$status" -eq "$DOT_STATUS_WARN" ] # the logout reminder always warns
   wrote "com.apple.screencapture location -string $HOME/Shots"
   [ ! -e "$HOME/~" ]
 }
@@ -120,7 +120,7 @@ wrote() { grep -qF "$1" "$CALLS"; }
 @test "screenshots: the default lands in Pictures/Screenshots" {
   with_settings '# nothing set'
   apply
-  [ "$status" -eq 0 ]
+  [ "$status" -eq "$DOT_STATUS_WARN" ] # the logout reminder always warns
   wrote "com.apple.screencapture location -string $HOME/Pictures/Screenshots"
 }
 
