@@ -7,11 +7,12 @@
 # Short on purpose. A tool earns a line here by being one you would install by
 # hand on a fresh machine within the first week; anything you reach for twice a
 # year is `brew install` when you need it, not a thing every machine carries.
-# (`gh` is not here because core/Brewfile already has it.)
 
+brew "gh"       # GitHub CLI
 brew "gitleaks" # secret scanning
 brew "lazygit"  # git TUI
 brew "mise"     # language runtimes (brew owns CLIs, mise owns runtimes)
+brew "zoxide"   # smarter cd
 
 # A cask, because that is how Anthropic ships it -- but it is a command you
 # type, not a window you click, so it belongs with the CLI tools rather than

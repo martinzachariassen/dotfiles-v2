@@ -23,12 +23,3 @@ brew "git"       # cloning and updating this repo
 brew "bats-core"  # test runner
 brew "shellcheck" # shell linter
 brew "shfmt"      # shell formatter
-
-# --- Baseline CLI -----------------------------------------------------------
-brew "bat"     # cat with syntax highlighting
-brew "eza"     # ls
-brew "fd"      # find
-brew "gh"      # GitHub CLI
-brew "jq"      # JSON, where dasel is overkill
-brew "ripgrep" # grep
-brew "zoxide"  # smarter cd
