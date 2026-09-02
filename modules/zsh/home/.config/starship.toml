@@ -1,63 +1,124 @@
-# Minimal two-line prompt: directory + git context on line one, a bare arrow
-# on line two so commands always start at column 0 regardless of path depth.
+# Minimal two-line prompt: identity/git context on line one, a bare arrow on
+# line two so commands always start at column 0 regardless of path depth.
+# Palette is the official Catppuccin Frappe table (starship.rs/presets --
+# catppuccin-powerline uses the same one), not a hand-picked subset, so any
+# future module addition has the full 26 colors to draw from.
 "$schema" = 'https://starship.rs/config-schema.json'
 
 format = """
+$username\
+$hostname\
 $directory\
 $git_branch\
+$git_state\
 $git_status\
 $fill\
+$jobs\
 $cmd_duration\
 $line_break\
 $character"""
 
 add_newline = true
 
-palette = "custom"
+palette = "frappe"
 
-[palettes.custom]
-blue   = "#8caaee"
-green  = "#a6d189"
-yellow = "#e5c890"
-red    = "#e78284"
-mauve  = "#ca9ee6"
-subtle = "#626880"
+[palettes.frappe]
+rosewater = "#f2d5cf"
+flamingo  = "#eebebe"
+pink      = "#f4b8e4"
+mauve     = "#ca9ee6"
+red       = "#e78284"
+maroon    = "#ea999c"
+peach     = "#ef9f76"
+yellow    = "#e5c890"
+green     = "#a6d189"
+teal      = "#81c8be"
+sky       = "#99d1db"
+sapphire  = "#85c1dc"
+blue      = "#8caaee"
+lavender  = "#babbf1"
+text      = "#c6d0f5"
+subtext1  = "#b5bfe2"
+subtext0  = "#a5adce"
+overlay2  = "#949cbb"
+overlay1  = "#838ba7"
+overlay0  = "#737994"
+surface2  = "#626880"
+surface1  = "#51576d"
+surface0  = "#414559"
+base      = "#303446"
+mantle    = "#292c3c"
+crust     = "#232634"
+
+# Only appears for root or when $USER differs from the login user -- e.g. a
+# sudo'd shell or a container -- so a normal local session shows nothing here.
+[username]
+style_user = "bold yellow"
+style_root = "bold red"
+format     = "[$user]($style)[@](overlay0)"
+show_always = false
+
+# ssh_only means this whole segment is invisible on a local machine and only
+# shows up over SSH, which is exactly when "which box am I on" matters.
+[hostname]
+ssh_only = true
+style    = "bold peach"
+format   = "[$hostname]($style) "
 
 [directory]
-style              = "bold blue"
-truncation_length  = 3
-truncation_symbol  = "…/"
-format             = "[$path]($style)[$read_only]($read_only_style) "
-read_only          = " 󰌾"
-read_only_style    = "red"
+style             = "bold blue"
+truncation_length = 3
+truncation_symbol = "…/"
+format            = "[$path]($style)[$read_only]($read_only_style) "
+read_only         = " 󰌾"
+read_only_style   = "red"
+
+[directory.substitutions]
+"~/Developer" = "󰲋 "
+"~/Downloads" = " "
+"~/Documents" = "󰈙 "
 
 [git_branch]
 symbol = " "
 style  = "bold mauve"
-format = "[on ](subtle)[$symbol$branch]($style) "
+format = "[on ](overlay0)[$symbol$branch]($style) "
+
+# Only renders during an actual rebase/merge/cherry-pick/bisect -- silent the
+# rest of the time, but the one moment it matters (mid-rebase, 3/7 commits in)
+# it's the difference between guessing and knowing.
+[git_state]
+style  = "bold peach"
+format = '\([$state( $progress_current/$progress_total)]($style)\) '
 
 [git_status]
-style         = "yellow"
-format        = "([$all_status$ahead_behind]($style)) "
-conflicted    = "="
-ahead         = "⇡${count}"
-behind        = "⇣${count}"
-diverged      = "⇕⇡${ahead_count}⇣${behind_count}"
-untracked     = "?${count}"
-stashed       = "*${count}"
-modified      = "!${count}"
-staged        = "+${count}"
-renamed       = "»${count}"
-deleted       = "✘${count}"
+style      = "yellow"
+format     = "([$all_status$ahead_behind]($style)) "
+conflicted = "="
+ahead      = "⇡${count}"
+behind     = "⇣${count}"
+diverged   = "⇕⇡${ahead_count}⇣${behind_count}"
+untracked  = "?${count}"
+stashed    = "*${count}"
+modified   = "!${count}"
+staged     = "+${count}"
+renamed    = "»${count}"
+deleted    = "✘${count}"
 
-# Pushes cmd_duration to the right edge of the terminal without a
+# Pushes jobs/cmd_duration to the right edge of the terminal without a
 # right_format block (which would print on its own timing pass).
 [fill]
 symbol = " "
 
+# Background jobs (Ctrl-Z'd or `&`) are easy to forget about; a silent count
+# is cheaper than `jobs` and only shows up when there's something to lose.
+[jobs]
+symbol = "✦"
+style  = "bold sapphire"
+format = "[$symbol$number]($style) "
+
 [cmd_duration]
 min_time = 2000
-style    = "dimmed subtle"
+style    = "dimmed subtext0"
 format   = "took [$duration]($style) "
 
 [line_break]
