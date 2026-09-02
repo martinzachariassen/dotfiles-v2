@@ -39,10 +39,13 @@ usage: dot <command> [options]
               --init      Create it for the first time (runs the wizard).
   doctor    Check this machine. Read-only; never changes anything.
 
-Config:  ~/.config/dotfiles/config.toml
-Repo:    see `dot doctor`
-Remove:  bash uninstall.sh --dry-run   (in the repo; not a verb, on purpose)
 EOF
+  # Printed, not baked into the quoted heredoc above: both paths are overridable
+  # -- DOT_CONFIG honours XDG_CONFIG_HOME and an explicit setting -- and a usage
+  # line naming the wrong file is worse than one naming no file at all.
+  printf 'Config:  %s\n' "${DOT_CONFIG/#$HOME/\~}"
+  printf 'Repo:    %s\n' "${DOT_ROOT/#$HOME/\~}"
+  printf 'Remove:  bash uninstall.sh --dry-run   (in the repo; not a verb, on purpose)\n'
 }
 
 # --- apply -----------------------------------------------------------------
@@ -64,7 +67,12 @@ cmd_apply() {
   if ! brew_load; then
     die 'Homebrew is not installed. Run install.sh first.'
   fi
-  brew_bundle "$DOT_ROOT/core/Brewfile" core
+  # Explicitly fatal, and explicitly said so. Bare, brew_bundle's `return 1`
+  # tripped `set -e` and the ERR trap reported "lib/brew.sh:44: return 1" --
+  # naming the library instead of the one thing worth knowing, which is that
+  # nothing below can run without dasel and fzf.
+  brew_bundle "$DOT_ROOT/core/Brewfile" core ||
+    die 'Core packages did not install. Fix the brew errors above, then re-run.'
 
   # Config. Generated on first run, read silently ever after -- a tool that
   # re-asks a settled question feels broken.
@@ -88,13 +96,6 @@ cmd_apply() {
   # Folded rather than bare: bare, a warning from core would have exited 2 and
   # `set -e` would have killed the apply before a single module ran.
   fold_status 'core apply.sh failed' "$BASH" "$DOT_ROOT/core/apply.sh"
-
-  # One sudo prompt up front, with a reason, beats several mid-run.
-  if modules_want_sudo && [[ $DOT_DRY_RUN != 1 ]]; then
-    heading 'Administrator access'
-    say 'A module needs sudo (macOS system defaults). Asking once, now.'
-    sudo -v
-  fi
 
   # Read into an array first, so "how many were there" is the array's length
   # rather than a counter maintained by hand alongside the loop.
@@ -176,7 +177,13 @@ cmd_doctor() {
 
   heading 'Result'
   if ((DOT_FAILURES > 0)); then
-    fail "$DOT_FAILURES problem(s) found"
+    # Deliberately not a count. DOT_FAILURES tallies the ✗ lines THIS process
+    # printed, and a hook that found three problems arrives as one rolled-up
+    # failure -- so "3 problem(s) found" sat underneath five ✗ marks and left
+    # you to work out which three. A summary you can misread is the bug, not
+    # the prose around it, which is why the warning branch below points rather
+    # than counts as well.
+    fail 'Problems found -- see the ✗ marks above.'
   elif ((DOT_WARNINGS > 0)); then
     # Neither `ok` nor `fail`. Nothing here will stop the next apply and the
     # exit status stays 0 -- but this line used to read "Everything looks

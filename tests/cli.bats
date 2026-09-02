@@ -105,6 +105,36 @@ pass_core_checks() {
   [[ $output == *"Everything looks right"* ]]
 }
 
+@test "doctor: a shim that lost its executable bit is not called missing" {
+  # One test was answering two questions. `[[ -x $shim ]]` alone reported a
+  # shim sitting right there as "not installed in ~/.local/bin", which sends
+  # you to `dot apply` hunting for a file you already have -- while the real
+  # symptom is a "Permission denied" naming the shim and explaining nothing.
+  # A check that misdescribes what it found is worse than one that stays quiet.
+  config_generate "A" "a@b.c" ""
+  pass_core_checks
+  chmod -x "$HOME/.local/bin/dot"
+
+  run "$DOT_ROOT/bin/dot" doctor
+
+  [ "$status" -eq 1 ]
+  [[ $output == *"not executable"* ]]
+  [[ $output != *"not installed"* ]]
+}
+
+@test "doctor: a shim that is genuinely absent is still called missing" {
+  # The other side of the split: widening -x to -f would have been the easy
+  # fix and the wrong one, because then a non-executable shim reports
+  # "✓ dot installed" while the command dies. Both branches keep their word.
+  config_generate "A" "a@b.c" ""
+
+  run "$DOT_ROOT/bin/dot" doctor
+
+  [ "$status" -eq 1 ]
+  [[ $output == *"not installed in ~/.local/bin"* ]]
+  [[ $output != *"not executable"* ]]
+}
+
 @test "config: an unknown option is refused" {
   dot config --initt
   [ "$status" -ne 0 ]

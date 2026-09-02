@@ -107,6 +107,31 @@ teardown() { teardown_sandbox; }
   [ "$output" = "1" ]
 }
 
+@test "link: a directory in the way is called a directory, and still moved aside" {
+  # The message said "(real file in the way)" whatever was actually there, and
+  # a whole directory going into the backup tree is by far the bigger surprise
+  # of the two -- the case where you most want the report to be precise about
+  # what it just moved.
+  local m
+  m=$(fixture_module git)
+  fixture_file "$m" ".gitconfig" "from-repo"
+  mkdir -p "$HOME/.gitconfig"
+  printf 'mine\n' >"$HOME/.gitconfig/inside.txt"
+
+  run fs_link_tree "$m"
+  [[ $output == *"real directory in the way"* ]]
+  [[ $output != *"real file in the way"* ]]
+
+  # `run` is a subshell, so the tallies are gone -- but its writes to disk are
+  # real, which is the half this asserts on.
+  [ -L "$HOME/.gitconfig" ]
+  [ "$(cat "$HOME/.gitconfig")" = "from-repo" ]
+
+  # The directory went in whole: its contents are still there, exactly once.
+  run bash -c "grep -rl mine '$DOT_STATE/backups' | wc -l | tr -d ' '"
+  [ "$output" = "1" ]
+}
+
 @test "backup: the run remembers where it put things" {
   # fs_backup_dir was called as `$(fs_backup_dir)`, and a command substitution
   # is a subshell -- so the memoised path never reached the caller. Everything
@@ -258,6 +283,20 @@ teardown() { teardown_sandbox; }
   [ "$status" -eq 1 ]
   # doctor is read-only: the file must be exactly as we left it
   [ "$(cat "$HOME/.gitconfig")" = "replaced" ]
+}
+
+@test "check: a directory in the way is reported as a directory" {
+  # The same wording bug as fs_link's, one verb over -- doctor has its own copy
+  # of the label, so fixing one would have left the other lying.
+  local m
+  m=$(fixture_module git)
+  fixture_file "$m" ".gitconfig" "from-repo"
+  mkdir -p "$HOME/.gitconfig"
+
+  run fs_check_tree "$m"
+  [ "$status" -eq 1 ]
+  [[ $output == *"real directory"* ]]
+  [[ $output != *"real file"* ]]
 }
 
 @test "check: an empty module is not drift" {

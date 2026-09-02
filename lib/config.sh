@@ -128,8 +128,11 @@ HEADER
     printf '# Add or remove names, then run `dot apply`.\n'
     printf '# Available: %s\n' "$(modules_all | tr '\n' ' ' | sed 's/ $//')"
     printf 'enabled = [\n'
+    # `if`, not a trailing `&&`. Only the commands after this loop keep the
+    # shape harmless here, and that is not a property worth relying on twice:
+    # a false test on the last line leaves the loop at status 1. See CLAUDE.md.
     while IFS= read -r line; do
-      [[ -n $line ]] && printf '  "%s",\n' "$line"
+      if [[ -n $line ]]; then printf '  "%s",\n' "$line"; fi
     done <<<"$modules"
     printf ']\n\n'
 

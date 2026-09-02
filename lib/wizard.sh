@@ -74,7 +74,10 @@ wizard_run() {
     say 'modules   (none -- you add them to the config yourself)'
   fi
   say "identity  ${name:-(unset)} <${email:-(unset)}>"
-  read -r -p '  Write this config? [Y/n]: ' reply
+  # Two failure modes, one line. A bare `read` tripped errexit on Ctrl-D and
+  # reported a crash; letting it fall through would be worse still, because
+  # ${reply:-y} reads end-of-input as yes and writes a config nobody confirmed.
+  read -r -p '  Write this config? [Y/n]: ' reply || __wizard_cancel
   [[ ${reply:-y} == [Yy]* ]] || __wizard_cancel
 
   config_generate "$name" "$email" "$modules"

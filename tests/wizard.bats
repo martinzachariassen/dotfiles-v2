@@ -174,11 +174,33 @@ in_strict_shell() {
 
 @test "wizard: the none profile writes an empty list and skips the picker" {
   fzf() { printf 'none\n'; }
-  # If the module picker ran at all it would consume this and pick something.
-  run wizard_run </dev/null
+  # Three answers: name (keep the default), email (keep the default), confirm.
+  # This used to be `</dev/null`, which reached the confirm prompt at
+  # end-of-input -- and since that read fell through to ${reply:-y}, the test
+  # passed while proving nothing about a config anybody had agreed to.
+  run wizard_run < <(printf '\n\ny\n')
   [ "$status" -eq 0 ]
   [[ $output == *"(none"* ]]
+  [ -f "$DOT_CONFIG" ]
   [ "$(cfg_list 'modules.enabled')" = "" ]
+}
+
+@test "wizard: end-of-input at the confirm prompt cancels and writes nothing" {
+  # Two bugs on one line. The read was bare, so Ctrl-D tripped errexit and the
+  # wizard reported a crash -- "lib/wizard.sh:77: read ... (exit 1)" -- instead
+  # of cancelling. And had it not, the fall-through was the worse half:
+  # ${reply:-y} reads end-of-input as YES, so a closed terminal would have
+  # written a config nobody confirmed, once, permanently.
+  in_strict_shell '
+    fzf() { printf "none\n"; }
+    wizard_run </dev/null
+    echo REACHED-THE-END
+  '
+  [ "$status" -eq 0 ]
+  [[ $output == *"Cancelled"* ]]
+  # __wizard_cancel exits, so nothing after wizard_run may run.
+  [[ $output != *"REACHED-THE-END"* ]]
+  [ ! -f "$DOT_CONFIG" ]
 }
 
 # --- The whole round trip ---------------------------------------------------
@@ -207,7 +229,7 @@ in_strict_shell() {
 # --- Stale module names -----------------------------------------------------
 
 @test "enabled: reading the module list is silent, however often it is read" {
-  # A single apply reads the list three times -- sudo check, apply loop, orphan
+  # A single apply reads the list more than once -- the apply loop, the orphan
   # scan -- and every one of them is a `< <(modules_enabled)` PROCESS
   # SUBSTITUTION, i.e. a subshell. That is why warning from inside
   # modules_enabled cannot be deduplicated with a cache variable: the flag is

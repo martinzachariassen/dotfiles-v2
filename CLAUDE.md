@@ -51,7 +51,7 @@ cut. If the engine reaches 2500, the question to answer first is which premise
 changed, not which number is convenient.
 
 **The line count was never the real constraint anyway.** What keeps the engine
-from becoming v1 is the shape rules below -- 7 files in `lib/`, 2 fields in
+from becoming v1 is the shape rules below -- 7 files in `lib/`, 1 field in
 `module.toml`, 60 lines of wizard, 3 verbs in `bin/dot`. v1's `core/` was 1324
 lines, comfortably inside 2500, and it was already unmaintainable: 13 files,
 two registries and a second ordering axis. Those limits are load-bearing in a
@@ -168,7 +168,7 @@ reports the same thing without dying, being the read-only verb.
 | Thing | Limit | Why |
 |---|---|---|
 | `lib/` | 7 files, no subdirectories | v1's `core/` was this shape at 13 files / 1324 lines. Pressure to add an eighth is a signal to delete something. |
-| `module.toml` | 2 fields | Field creep is the path back to `feature.sh`. A third needs a written justification and an edit to `contract.bats`. `default` went with the `custom` profile that read it; `order` went once every module had settled on the same value. |
+| `module.toml` | 1 field | Field creep is the path back to `feature.sh`. A second needs a written justification and an edit to `contract.bats`. `default` went with the `custom` profile that read it; `order` went once every module had settled on the same value; `sudo` went once every module had settled on `false` -- a module that needs root calls `sudo` in its own `apply.sh`, which is what this checkpoint always said the fallback was. |
 | `lib/wizard.sh` | 60 lines | Where the 587-line monster regrows. If it needs a loop over a question schema, stop. |
 | `bin/dot` | 3 verbs, hardcoded `case` | A verb table grew to 84 lines with five drifting consumers. Modules ship scripts in `home/.local/bin/` instead; `uninstall.sh` sits at the root. |
 | module hooks | 3 names: `apply.sh`, `doctor.sh`, `remove.sh` | Closed set, enforced by `contract.bats`. `remove.sh` earned its place on a gap the generic sweep cannot close, not on symmetry. |
@@ -181,9 +181,6 @@ Revisit these once there are ~8 modules:
   module ever genuinely needs to run after another one, that is a dependency,
   and it needs a real answer -- not the `order = 50` integer that used to be
   here and that every module set to a number nobody chose.
-- **`sudo`** buys one prompt instead of several. If the keepalive logic ever
-  exceeds ~12 lines, cut the field and let `apply.sh` call `sudo` itself.
-  (v1's `core/sudo.sh` reached 56 lines.)
 
 ## Gotchas that cost real time
 

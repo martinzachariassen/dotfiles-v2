@@ -27,10 +27,18 @@ if brew_load; then
   done
 fi
 
+# Read BEFORE anything invokes colima, and everything below is gated on it.
+# `colima status` creates ~/.colima on a machine that never had a VM, so asking
+# first and testing afterwards made this hook warn about images and volumes it
+# had just conjured -- and made --dry-run write to the disk it promises not to
+# touch. No ~/.colima means there is no VM to stop and none to warn about.
+vm_on_disk=0
+if [[ -d $HOME/.colima ]]; then vm_on_disk=1; fi
+
 # The VM is data, not configuration. `colima delete` throws away every image
 # and volume in it, and that is not a call an uninstaller should make for you.
 # Stopping it is reversible; deleting it is not.
-if command -v colima >/dev/null 2>&1 && colima status >/dev/null 2>&1; then
+if ((vm_on_disk)) && command -v colima >/dev/null 2>&1 && colima status >/dev/null 2>&1; then
   if [[ $DOT_DRY_RUN == 1 ]]; then
     info 'colima stop'
   else
@@ -38,7 +46,7 @@ if command -v colima >/dev/null 2>&1 && colima status >/dev/null 2>&1; then
   fi
 fi
 
-if [[ -d $HOME/.colima ]]; then
+if ((vm_on_disk)); then
   warn 'the colima VM is still on disk, with its images and volumes'
   dim 'Delete it yourself with: colima delete'
 fi

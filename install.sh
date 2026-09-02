@@ -35,7 +35,7 @@ step() {
   exit 1
 }
 [ "$(uname -m)" = "arm64" ] || {
-  echo "! Not Apple Silicon; exiting."
+  echo "This is Apple Silicon only; this Mac reports $(uname -m)." >&2
   exit 1
 }
 

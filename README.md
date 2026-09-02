@@ -83,7 +83,7 @@ contract, which is what makes that safe.
 
 ```
 modules/<name>/
-├── module.toml     required   description, sudo
+├── module.toml     required   description (the only field)
 ├── Brewfile        optional   packages for this module
 ├── home/           optional   mirrors $HOME literally; leaf files are symlinked
 ├── apply.sh        optional   imperative, idempotent, run in its own process
@@ -125,12 +125,15 @@ Two rules matter:
   link into the repo, one module would own the whole tree and every other
   tool's files would vanish.
 - **A real file in the way is moved, never overwritten** -- to
-  `~/.local/state/dotfiles/backups/<timestamp>/`. After a collision the file
-  exists in exactly one place.
+  `~/.local/state/dotfiles/backups/<timestamp>/`. After a collision it exists
+  in exactly one place. A real *directory* where a file belongs is moved the
+  same way, whole, and both `apply` and `doctor` say "directory" rather than
+  "file" so the report matches the size of what just happened.
 
-`dot doctor` reports drift (`missing`, `wrong-target`, `clobbered`, `broken`)
-and any orphaned links left behind by a disabled module. It reports them; it
-never deletes anything in your home directory on its own.
+`dot doctor` reports drift in the words you will actually see -- `not linked`,
+`wrong target`, `real file`, `real directory`, `broken link` -- plus any
+orphaned links left behind by a disabled module. It reports them; it never
+deletes anything in your home directory on its own.
 
 ## Uninstalling
 
@@ -189,7 +192,9 @@ Three things it will not do, and the reasons are the interesting part:
 - **It never deletes a real file** — only symlinks pointing into the repo, plus
   the two generated files it can prove it wrote (`~/.local/bin/dot` and
   `~/.config/git/config.local`, both of which carry the repo path or a
-  generated-by header).
+  generated-by header). `~/.local/state/dotfiles` itself is removed with
+  `rmdir`, not `rm -rf`, so a file some other tool left there keeps the
+  directory alive and gets reported instead of swept up.
 - **It cannot undo macOS defaults.** `apply` never read the old values, so they
   exist nowhere; `defaults delete` would give you Apple's factory setting, not
   what you had. Making that reversible means recording state at apply time,

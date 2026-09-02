@@ -22,9 +22,8 @@ modules_all() {
 
 module_exists() { [[ -f $(module_manifest "$1") ]]; }
 
-# --- Manifest fields (the two that exist; a third needs justifying) ---------
+# --- Manifest fields (the one that exists; a second needs justifying) -------
 module_desc() { toml_get "$(module_manifest "$1")" 'description' "$1"; }
-module_sudo() { [[ $(toml_get "$(module_manifest "$1")" 'sudo' 'false') == true ]]; }
 
 # module_setting NAME KEY [DEFAULT] -- read [settings.<name>].<key> from the
 # user config.
@@ -50,8 +49,8 @@ module_setting_bool() {
 # good as any, and it makes two runs read identically. There was an `order`
 # field once; every module set it to 50.
 #
-# Silent by design, and it cannot be otherwise. A single run asks several times
-# -- the sudo check, the apply loop, the orphan scan -- and every caller reads
+# Silent by design, and it cannot be otherwise. A single run asks more than
+# once -- the apply loop, the orphan scan -- and every caller reads
 # it as `< <(modules_enabled)`, which is a subshell (see docs/bash-guide.md).
 # So a warning printed in here appears once per caller, and no amount of
 # caching fixes that: a variable set inside a subshell never reaches the
@@ -136,16 +135,28 @@ module_run_hook() {
 # The order is fixed so apply.sh can always assume its packages are installed
 # and its config files are already in place.
 module_apply() {
-  local name=$1 dir
+  local name=$1 dir packaged=1
   dir=$(modules_dir "$name")
 
-  brew_bundle "$dir/Brewfile" "$name"
+  # A failing Brewfile stops this module, not the run. brew_bundle has already
+  # called `fail`, so the tally is right either way -- but called bare, its
+  # `return 1` tripped `set -e` and every module after this one was skipped,
+  # with the ERR trap naming lib/modules.sh instead of the package that would
+  # not install. One unavailable cask must not cost you the other five modules.
+  brew_bundle "$dir/Brewfile" "$name" || packaged=0
+
+  # Linked anyway: files depend on nothing but the repo. apply.sh is not, since
+  # its one documented promise is that its packages are already installed.
   fs_link_tree "$dir"
 
   # Not `if ! module_run_hook`: that read every non-zero status as a crash, so
   # the one `warn` in git/apply.sh -- an empty user.name, which the hook is
   # written to shrug at -- was reported as "git: apply.sh failed".
-  fold_status "$name: apply.sh failed" module_run_hook "$name" apply.sh
+  if ((packaged)); then
+    fold_status "$name: apply.sh failed" module_run_hook "$name" apply.sh
+  else
+    dim "skipped $name/apply.sh -- its packages are not installed"
+  fi
 }
 
 # module_doctor NAME -- read-only checks. Never modifies anything.
@@ -159,10 +170,31 @@ module_apply() {
 # One summary line per module, not one per file: fs_check_tree already named
 # each path.
 module_doctor() {
-  local name=$1 dir
+  local name=$1 dir tracked=''
   dir=$(modules_dir "$name")
 
-  fs_check_tree "$dir" || fail "$name: files are not linked -- run: dot apply"
+  # Does this module track any files at all? An empty home/ counts as none.
+  #
+  # It is asked because a heading with nothing under it reads as a check that
+  # died quietly, and silence was the entire report for two shapes of module:
+  # one that is only a Brewfile (apps, dev-cli), and one whose files are all
+  # correctly linked -- fs_check_tree prints drift and nothing else. Both now
+  # say so out loud.
+  if [[ -d $dir/home ]]; then
+    tracked=$(find "$dir/home" -type f -print -quit)
+  fi
+
+  if [[ -z $tracked && ! -f $dir/doctor.sh ]]; then
+    dim 'packages only -- nothing to check'
+    return 0
+  fi
+
+  if fs_check_tree "$dir"; then
+    if [[ -n $tracked ]]; then ok 'files        all linked'; fi
+  else
+    fail "$name: files are not linked -- run: dot apply"
+  fi
+
   fold_status "$name: doctor.sh reported problems" module_run_hook "$name" doctor.sh
 }
 
@@ -182,14 +214,4 @@ module_doctor() {
 # remove.sh means the sweep was enough.
 module_remove() {
   fold_status "$1: remove.sh failed" module_run_hook "$1" remove.sh
-}
-
-# True if any enabled module declares sudo = true, so the driver can prime the
-# credential once up front instead of letting prompts interrupt a long run.
-modules_want_sudo() {
-  local name
-  while IFS= read -r name; do
-    module_sudo "$name" && return 0
-  done < <(modules_enabled)
-  return 1
 }

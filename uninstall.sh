@@ -86,7 +86,10 @@ if [[ $DOT_DRY_RUN != 1 ]]; then
   heading 'Confirm'
   say 'Everything listed above will be removed, and there is no undo.'
   printf '  Type %sremove%s to continue: ' "$__C_BOLD" "$__C_RESET"
-  read -r answer
+  # `|| answer=''` so Ctrl-D lands on the same line as typing anything else.
+  # Bare, it tripped errexit and answered the most destructive prompt in the
+  # repo with a crash report instead of "Nothing was changed."
+  read -r answer || answer=''
   [[ $answer == remove ]] || die 'Nothing was changed.'
 fi
 
@@ -124,6 +127,9 @@ fi
 # and here the same test decides whether the file is ours to delete.
 heading 'CLI'
 shim="$HOME/.local/bin/dot"
+# -f, where core/doctor.sh tests -x. Deliberate: a shim that lost its executable
+# bit is broken there and still ours here, and skipping it would leave a dead
+# `dot` on the PATH after an uninstall.
 if [[ -f $shim ]]; then
   if grep -qF "DOT_ROOT=\"$DOT_ROOT\"" "$shim" 2>/dev/null; then
     fs_discard "$shim"
@@ -161,8 +167,32 @@ if [[ -n $(find "$DOT_STATE/backups" -mindepth 1 -print -quit 2>/dev/null) ]]; t
   dim 'Your own files, moved aside by an earlier apply. Nothing else has a copy.'
   dim 'Delete them yourself once you have looked.'
 else
-  [[ $DOT_DRY_RUN == 1 ]] || rm -rf "${DOT_STATE:?}"
   say 'None to keep.'
+  # The state directory goes with them -- but only if the (now empty) backup
+  # tree was the whole of it. A recursive delete here would take anything else
+  # that ended up in ~/.local/state/dotfiles along with it, and an uninstall
+  # removing a file nothing in this repo created is the one mistake it cannot
+  # undo; there is a v1 brew-bundle.log sitting in exactly that directory on
+  # the author's machine. rmdir cannot recurse and refuses a non-empty
+  # directory, so the safeguard is the verb rather than the caller -- the same
+  # reason the Config section above uses it.
+  #
+  # Tested before acting rather than left to rmdir's exit status, so that a dry
+  # run and a real run print the same sentence.
+  #
+  # The find sits inside `[[ -n $(...) ]]` rather than in a `stray=$(...)`
+  # assignment for the reason CLAUDE.md gives: find exits 1 on a directory that
+  # is not there, and under `set -e` that status kills a bare assignment. A
+  # test context is exempt. The -d guard is what keeps the message honest, not
+  # what keeps the script alive.
+  if [[ -d $DOT_STATE ]]; then
+    if [[ -n $(find "$DOT_STATE" -mindepth 1 -not -path "$DOT_STATE/backups" -print -quit 2>/dev/null) ]]; then
+      warn "left alone  ${DOT_STATE/#$HOME/\~} holds files this repo did not create"
+    else
+      info "remove  ${DOT_STATE/#$HOME/\~}"
+      [[ $DOT_DRY_RUN == 1 ]] || rmdir "$DOT_STATE/backups" "$DOT_STATE" 2>/dev/null || true
+    fi
+  fi
 fi
 
 # --- Applications ---------------------------------------------------------------

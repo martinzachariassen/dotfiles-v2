@@ -16,7 +16,7 @@ setup() {
   # The manifest is what makes the module visible to the registry, and
   # fs_orphans now takes its scan roots from there rather than from whatever
   # is enabled. Without it the fixture is a directory the repo does not know.
-  printf 'description = "demo"\nsudo = false\n' >"$MODULE/module.toml"
+  printf 'description = "demo"\n' >"$MODULE/module.toml"
   DOT_ROOT="$REPO"
 }
 

@@ -9,6 +9,14 @@
 # Every value here can be overridden from config.toml under
 # [settings.macos-defaults]; the defaults below are what you get if you say
 # nothing.
+#
+# Nothing here needs root, despite the name -- "system preferences" describes
+# what they affect, not where they live. Every domain written below is a
+# per-user plist in ~/Library/Preferences, the screenshot directory is under
+# $HOME, and killall only signals your own processes. This module used to
+# declare `sudo = true` and so primed an administrator prompt on every apply
+# that no command below ever spent; it was the last claim on that manifest
+# field, and the field went with it.
 
 set -euo pipefail
 source "${DOT_ROOT:?}/lib/dot.sh"

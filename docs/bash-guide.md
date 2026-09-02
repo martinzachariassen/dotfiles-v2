@@ -32,7 +32,7 @@ set -euo pipefail
 `#!/usr/bin/env bash` -- run this file with whichever `bash` is first on `PATH`
 (rather than a hardcoded path, which differs between machines).
 
-`set -euo pipefail` is four separate safety settings, and it is why scripts here
+`set -euo pipefail` is three separate safety settings, and it is why scripts here
 are much shorter than they would otherwise be:
 
 | Flag | Meaning | Without it |

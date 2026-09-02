@@ -19,17 +19,15 @@ teardown() { teardown_sandbox; }
   [ "${#lines[@]}" -gt 0 ]
 }
 
-@test "every module has a parseable manifest with both fields" {
+@test "every module has a parseable manifest with its one field" {
   local name manifest
   while IFS= read -r name; do
     manifest="$DOT_ROOT/modules/$name/module.toml"
-    for field in description sudo; do
-      run dasel -i toml -o yaml "$field" <"$manifest"
-      [ "$status" -eq 0 ] || {
-        echo "module '$name' is missing field '$field'"
-        return 1
-      }
-    done
+    run dasel -i toml -o yaml description <"$manifest"
+    [ "$status" -eq 0 ] || {
+      echo "module '$name' is missing field 'description'"
+      return 1
+    }
   done < <(modules_all)
 }
 
@@ -43,26 +41,16 @@ teardown() { teardown_sandbox; }
   done < <(modules_all)
 }
 
-@test "sudo is a boolean" {
-  local name sdo
-  while IFS= read -r name; do
-    sdo=$(toml_get "$(module_manifest "$name")" sudo)
-    [[ $sdo == true || $sdo == false ]] || {
-      echo "$name: sudo must be a boolean"
-      return 1
-    }
-  done < <(modules_all)
-}
-
-@test "manifests carry no third field" {
+@test "manifests carry no second field" {
   # Field creep is the most likely path back to v1's feature.sh. A new field
   # is allowed, but only deliberately -- which means editing this test.
   # `default` went with the `custom` profile that read it; `order` went once
-  # every module had settled on the same value.
+  # every module had settled on the same value; `sudo` went once it turned out
+  # that no module ever needed root, which left `description` on its own.
   local name keys
   while IFS= read -r name; do
     keys=$(dasel -i toml -o yaml 'keys()' <"$(module_manifest "$name")" | sed 's/^- //' | sort | tr '\n' ' ')
-    [ "$keys" = "description sudo " ] || {
+    [ "$keys" = "description " ] || {
       echo "$name has unexpected manifest fields: $keys"
       return 1
     }
@@ -102,6 +90,33 @@ teardown() { teardown_sandbox; }
       }
     done
   done < <(modules_all)
+}
+
+@test "no doctor.sh changes anything in \$HOME" {
+  # `dot doctor` is the one verb that promises to change nothing, and a hook is
+  # the easiest place to break that promise by accident -- the tool you ask
+  # for a status is not obliged to answer without writing. `colima status`
+  # CREATED ~/.colima/_lima before answering, so a doctor run on a machine that
+  # had never used containers left a directory behind, and the uninstaller's
+  # dry run then warned about a VM it had just conjured.
+  #
+  # Snapshotting $HOME around every hook catches the next one generically,
+  # which is the only way this stays caught: the specific offender is one
+  # command deep inside one module, and nothing else would have looked.
+  local name before after
+  before=$(home_snapshot)
+  while IFS= read -r name; do
+    [ -f "$DOT_ROOT/modules/$name/doctor.sh" ] || continue
+    run env DOT_MODULE="$name" DOT_MODULE_DIR="$DOT_ROOT/modules/$name" \
+      bash "$DOT_ROOT/modules/$name/doctor.sh"
+  done < <(modules_all)
+  after=$(home_snapshot)
+
+  [ "$before" = "$after" ] || {
+    echo "a doctor.sh wrote to \$HOME:"
+    diff <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true
+    return 1
+  }
 }
 
 @test "every profile refers only to modules that exist" {

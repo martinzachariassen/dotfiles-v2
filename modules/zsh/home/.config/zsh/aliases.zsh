@@ -16,5 +16,6 @@ alias gl='git log --oneline --graph --decorate -20'
 alias ..='cd ..'
 alias ...='cd ../..'
 
-# Reapply the dotfiles after pulling.
+# Reapply the dotfiles after pulling. The path is install.sh's default; if you
+# cloned elsewhere (DOTFILES_DIR), this is the one line that needs editing.
 alias dotup='git -C "$HOME/Developer/personal/dotfiles-v2" pull --ff-only && dot apply'

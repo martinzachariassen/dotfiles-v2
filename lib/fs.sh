@@ -95,7 +95,7 @@ fs_classify() {
 # Idempotent: an already-correct link prints nothing and touches nothing, so
 # re-running `dot apply` on an unchanged machine is silent.
 fs_link() {
-  local src=$1 dst=$2 rel=${2#"$HOME"/} state backup
+  local src=$1 dst=$2 rel=${2#"$HOME"/} state backup what
 
   state=$(fs_classify "$src" "$dst")
 
@@ -111,7 +111,15 @@ fs_link() {
   case $state in
     missing) info "link    ~/$rel" ;;
     wrong-target | broken) info "relink  ~/$rel" ;;
-    clobbered) info "backup  ~/$rel  (real file in the way)" ;;
+    clobbered)
+      # "file" is a lie when it is a whole directory being moved into the
+      # backup tree, and that is the case worth naming precisely -- it is by
+      # far the bigger surprise of the two. The values are quoted because
+      # `file` is also a command name, which shellcheck reads an unquoted bare
+      # word as an attempt to run (SC2209).
+      if [[ -d $dst ]]; then what='directory'; else what='file'; fi
+      info "backup  ~/$rel  (real $what in the way)"
+      ;;
   esac
   [[ $DOT_DRY_RUN == 1 ]] || {
     # A real file is moved aside; a symlink carries no data, so replacing one
@@ -190,10 +198,19 @@ fs_check_tree() {
     rel=${dst#"$HOME"/}
     case $state in
       ok) ;;
-      missing) warn "not linked    ~/$rel" ;;
-      wrong-target) warn "wrong target  ~/$rel" ;;
-      clobbered) warn "real file     ~/$rel" ;;
-      broken) warn "broken link   ~/$rel" ;;
+      missing) warn "not linked      ~/$rel" ;;
+      wrong-target) warn "wrong target    ~/$rel" ;;
+      clobbered)
+        # The same lie as fs_link's, one verb over. These labels are a
+        # 16-character column, which "real directory" fills exactly -- that is
+        # why the column widened rather than the word shrinking to "dir".
+        if [[ -d $dst ]]; then
+          warn "real directory  ~/$rel"
+        else
+          warn "real file       ~/$rel"
+        fi
+        ;;
+      broken) warn "broken link     ~/$rel" ;;
     esac
     [[ $state == ok ]] || drift=1
   done < <(fs_pairs "$1")

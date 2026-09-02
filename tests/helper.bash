@@ -32,6 +32,21 @@ teardown_sandbox() {
   return 0
 }
 
+# home_snapshot -- a sorted listing of everything under $HOME that this repo
+# could plausibly be responsible for. Compare one taken before an operation
+# with one taken after to assert that nothing was written.
+#
+# Naming the paths you expect to survive only tests the paths you thought of,
+# which is how `colima status` got away with creating ~/.colima inside both a
+# doctor run and an uninstall dry run.
+#
+# ~/Library is pruned because it is not ours: Homebrew caches into
+# ~/Library/Caches the moment anything shells out to `brew`, and macOS writes
+# preferences there. Nothing in this repo links or generates below it.
+home_snapshot() {
+  find "$HOME" -path "$HOME/Library" -prune -o -print | sort
+}
+
 # fixture_module NAME -- a module directory outside the repo, so tests can
 # invent trees without polluting modules/.
 fixture_module() {

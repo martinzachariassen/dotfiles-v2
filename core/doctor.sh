@@ -22,16 +22,21 @@ fi
 
 # --- The CLI can actually be invoked ----------------------------------------
 shim="$HOME/.local/bin/dot"
-if [[ -x $shim ]]; then
-  # -F: a checkout path is a literal, not a pattern -- an unescaped `.` would
-  # match anything and a `[` would be a syntax error inside a health check.
-  if grep -qF "DOT_ROOT=\"$DOT_ROOT\"" "$shim" 2>/dev/null; then
-    ok 'dot         installed'
-  else
-    fail 'dot         ~/.local/bin/dot points at a different checkout'
-  fi
-else
+if [[ ! -f $shim ]]; then
   fail 'dot         not installed in ~/.local/bin (run: dot apply)'
+elif [[ ! -x $shim ]]; then
+  # Its own branch rather than folded into "not installed", which sends you to
+  # `dot apply` hunting for a file that is already sitting there. The symptom
+  # is a "Permission denied" naming the shim and nothing about why -- exactly
+  # the silent failure a check is for. (uninstall.sh tests -f, not -x, and the
+  # asymmetry is deliberate: a shim that lost the bit is still ours to remove.)
+  fail 'dot         ~/.local/bin/dot is not executable (run: dot apply)'
+# -F: a checkout path is a literal, not a pattern -- an unescaped `.` would
+# match anything and a `[` would be a syntax error inside a health check.
+elif grep -qF "DOT_ROOT=\"$DOT_ROOT\"" "$shim" 2>/dev/null; then
+  ok 'dot         installed'
+else
+  fail 'dot         ~/.local/bin/dot points at a different checkout'
 fi
 
 case ":$PATH:" in

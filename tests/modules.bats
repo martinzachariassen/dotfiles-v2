@@ -30,7 +30,7 @@ teardown() { teardown_sandbox; }
 make_module() {
   local dir="$REPO/modules/$1"
   mkdir -p "$dir/home"
-  printf 'description = "%s"\nsudo = false\n' "$1" >"$dir/module.toml"
+  printf 'description = "%s"\n' "$1" >"$dir/module.toml"
   printf '%s\n' "$dir"
 }
 
@@ -77,6 +77,31 @@ hook() {
 
   module_doctor demo
   [ "$DOT_FAILURES" -eq 0 ]
+}
+
+@test "doctor: a packages-only module says so instead of printing nothing" {
+  # `dot doctor` printed "Module: apps" with nothing at all underneath it,
+  # which reads as a check that died quietly -- the one thing a health report
+  # must never do. Same reason uninstall.sh prints "None found." per section.
+  make_module demo >/dev/null
+
+  run module_doctor demo
+  [ "$status" -eq 0 ]
+  [[ $output == *"nothing to check"* ]]
+}
+
+@test "doctor: a module whose files are all linked says so" {
+  # The other silent section, and the more common one: fs_check_tree prints
+  # drift and nothing else, so a healthy module with no doctor.sh -- which is
+  # modules/git on any working machine -- reported by saying nothing.
+  local m
+  m=$(make_module demo)
+  printf 'x\n' >"$m/home/.demorc"
+  fs_link_tree "$m" >/dev/null
+
+  run module_doctor demo
+  [ "$status" -eq 0 ]
+  [[ $output == *"all linked"* ]]
 }
 
 @test "doctor: drift and a failing hook are both reported, in one pass" {
@@ -145,6 +170,56 @@ hook() {
   module_apply demo
   [ "$DOT_FAILURES" -eq 0 ]
   [ "$DOT_WARNINGS" -eq 1 ]
+}
+
+# --- A module whose packages will not install ---------------------------------
+
+@test "apply: a failing Brewfile stops that module, not the run" {
+  # The regression, and it needed a real `set -e` shell to see: brew_bundle
+  # calls `fail` AND returns 1, and module_apply ran it bare -- so one
+  # unavailable cask aborted `dot apply` where it stood. Every module after it
+  # went unapplied, and the ERR trap blamed lib/modules.sh rather than naming
+  # the package. "fail does not exit" has to hold here too.
+  local a b
+  a=$(make_module alpha)
+  b=$(make_module beta)
+  printf 'x\n' >"$b/home/.betarc"
+  : "$a"
+
+  run env -u DOT_ROOT bash -euo pipefail -c "
+    source \"$BATS_TEST_DIRNAME/../lib/dot.sh\"
+    DOT_ROOT='$REPO'
+    brew_bundle() { fail 'the Brewfile failed'; return 1; }
+    module_apply alpha
+    module_apply beta
+    echo REACHED-THE-END
+  "
+  # Both failures counted, so the run still exits non-zero...
+  [ "$status" -eq 1 ]
+  # ...but it got all the way to the end, and beta's files were still linked.
+  [[ $output == *"REACHED-THE-END"* ]]
+  [ -L "$HOME/.betarc" ]
+}
+
+@test "apply: apply.sh is skipped when its packages did not install" {
+  # Brewfile -> links -> apply.sh is ordered so apply.sh can assume its
+  # packages exist. Running it when they do not produces a second, more
+  # confusing failure stacked on top of the real one. Files are still linked:
+  # they depend on nothing but the repo.
+  local m
+  m=$(make_module demo)
+  printf 'x\n' >"$m/home/.demorc"
+  printf '#!/usr/bin/env bash\ntouch "$HOME/apply-ran"\n' >"$m/apply.sh"
+
+  brew_bundle() {
+    fail 'the Brewfile failed'
+    return 1
+  }
+  module_apply demo
+
+  [ ! -e "$HOME/apply-ran" ]
+  [ -L "$HOME/.demorc" ]
+  [ "$DOT_FAILURES" -eq 1 ]
 }
 
 @test "doctor: a status that is neither 0 nor the warn status is a failure" {
