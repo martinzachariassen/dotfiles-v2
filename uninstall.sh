@@ -165,7 +165,52 @@ else
   say 'None to keep.'
 fi
 
-# brew_headcount -- print "<packages managed> <packages this repo never named>".
+# --- Applications ---------------------------------------------------------------
+#
+# The leftover this section exists to prevent. Homebrew MOVES a cask's .app into
+# /Applications, so it no longer resolves back into the Cellar -- and Homebrew's
+# own uninstaller deletes the prefix and nothing outside it. Left to itself it
+# would strand every GUI app on the machine: still installed, with nothing left
+# that can update or remove it. `brew services` leaks the same way, its launchd
+# plists living in ~/Library/LaunchAgents, equally outside the prefix.
+#
+# The fix is ordering, not machinery. Homebrew knows exactly what it put where,
+# right up until the step that destroys that knowledge -- so spend it first.
+# Everything here has to happen while brew still works.
+heading 'Applications'
+
+# Services before apps: a launchd job whose binary was torn out from under it
+# is a worse state than a job stopped a second early.
+if [[ $DOT_DRY_RUN == 1 ]]; then
+  info 'brew services stop --all'
+else
+  brew services stop --all >/dev/null 2>&1 || true
+fi
+
+mapfile -t casks < <(brew list --cask 2>/dev/null)
+if ((${#casks[@]} == 0)); then
+  say 'None installed.'
+elif [[ $DOT_DRY_RUN == 1 ]]; then
+  for cask in "${casks[@]}"; do
+    info "uninstall  $cask"
+  done
+  dim '--zap as well: application support, preferences and caches go too'
+elif brew uninstall --cask --zap --force "${casks[@]}"; then
+  ok "removed ${#casks[@]} application(s)"
+else
+  # Ask brew what survived rather than reporting which command failed: the
+  # authoritative answer to "what is still installed" is the thing that knows.
+  #
+  # These are `fail`, so the guard further down stops the run before the
+  # handoff -- and that is the entire point of doing this while brew is alive.
+  # Destroying the only tool that could remove an app you just failed to remove
+  # would manufacture the exact leftover this section is here to prevent.
+  while IFS= read -r cask; do
+    fail "could not remove $cask -- remove it by hand, then re-run"
+  done < <(brew list --cask 2>/dev/null)
+fi
+
+# brew_headcount -- print "<formulae installed> <formulae this repo never named>".
 #
 # This line used to read "Homebrew and every package it installed", which is
 # true and which reads as "the packages this repo installed". That is the one
@@ -180,15 +225,13 @@ brew_headcount() {
   command -v brew >/dev/null 2>&1 || return 1
 
   installed=$(mktemp) repo=$(mktemp) bundle=$(mktemp)
-  {
-    brew list --formula
-    brew list --cask
-  } 2>/dev/null | sort -u >"$installed"
 
-  # --all because `brew bundle list` defaults to formulae only, which would
-  # count every cask in modules/apps as one this repo never named.
+  # Formulae only, on both sides -- `brew bundle list` defaults to the same.
+  # The casks were itemised by name in the section above, and counting them
+  # again here would have the preview claim the same applications twice.
+  brew list --formula 2>/dev/null | sort -u >"$installed"
   cat "$DOT_ROOT"/core/Brewfile "$DOT_ROOT"/modules/*/Brewfile 2>/dev/null >"$bundle"
-  brew bundle list --all --file "$bundle" 2>/dev/null | sort -u >"$repo"
+  brew bundle list --file "$bundle" 2>/dev/null | sort -u >"$repo"
 
   printf '%s %s\n' \
     "$(wc -l <"$installed" | tr -d ' ')" \
@@ -210,7 +253,7 @@ if [[ $DOT_DRY_RUN == 1 ]]; then
   # `read` runs in this shell; only the process substitution is a subshell, so
   # both numbers survive. See docs/bash-guide.md.
   if read -r n_all n_foreign < <(brew_headcount); then
-    info "uninstall Homebrew and all $n_all packages it manages"
+    info "uninstall Homebrew and all $n_all formulae it manages"
     # A warning, because this is the part nobody expects: those packages are
     # not this repo's, and it is removing them anyway.
     ((n_foreign == 0)) ||
@@ -219,10 +262,6 @@ if [[ $DOT_DRY_RUN == 1 ]]; then
     info 'uninstall Homebrew and every package it manages'
   fi
   info "remove  $DOT_ROOT"
-  # Left behind on purpose, and worth saying because the leftovers are large
-  # and invisible: Homebrew MOVES a cask's .app into /Applications, so it does
-  # not resolve back into the Cellar and its own uninstaller does not touch it.
-  dim 'Apps installed as casks stay in /Applications, unmanaged.'
   heading 'Dry run'
   dim 'Nothing was changed.'
   exit 0

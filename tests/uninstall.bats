@@ -128,6 +128,23 @@ link_one() {
   [ -d "$DOT_ROOT/.git" ]
 }
 
+@test "uninstall: applications are dealt with before Homebrew is" {
+  # The one ordering the script cannot get wrong. Homebrew MOVES a cask's .app
+  # to /Applications, so its own uninstaller leaves it there; only `brew` knows
+  # which apps those are, and only until it is gone. Removing casks after the
+  # handoff would strand every GUI app on the machine.
+  DOT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+
+  run env DOT_ROOT="$DOT_ROOT" bash "$DOT_ROOT/uninstall.sh" --dry-run
+  [ "$status" -eq 0 ]
+
+  apps=$(printf '%s\n' "$output" | grep -n '^Applications$' | cut -d: -f1)
+  brew=$(printf '%s\n' "$output" | grep -n '^Homebrew and the repo$' | cut -d: -f1)
+  [ -n "$apps" ]
+  [ -n "$brew" ]
+  [ "$apps" -lt "$brew" ]
+}
+
 @test "uninstall: refuses an unknown option" {
   DOT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   run env DOT_ROOT="$DOT_ROOT" bash "$DOT_ROOT/uninstall.sh" --dry

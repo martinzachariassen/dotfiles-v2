@@ -156,15 +156,29 @@ one misreading that matters:
 
 ```
 Homebrew and the repo
-  → uninstall Homebrew and all 113 packages it manages
-  ! 74 of those are named by no Brewfile here -- they go too
+  → uninstall Homebrew and all 85 formulae it manages
+  ! 59 of those are named by no Brewfile here -- they go too
   → remove  /Users/you/Developer/personal/dotfiles-v2
-  Apps installed as casks stay in /Applications, unmanaged.
 ```
 
-That last line is not an oversight in this repo: Homebrew *moves* a cask's
-`.app` into `/Applications`, so it no longer resolves back into the Cellar and
-Homebrew's own uninstaller leaves it alone.
+**Casks are removed first, by name, while Homebrew still works.** They have to
+be: Homebrew *moves* a cask's `.app` into `/Applications`, so it no longer
+resolves back into the Cellar, and Homebrew's own uninstaller deletes the
+prefix and nothing outside it. Left to itself it would strand every GUI app on
+the machine — still installed, with nothing left that can update or remove
+them. `brew services` leaks the same way, its launchd plists living outside the
+prefix, so services are stopped before the apps go.
+
+The ordering is the whole mechanism. Homebrew knows exactly what it put where,
+right up until the step that destroys that knowledge, so the uninstall spends
+that knowledge first. Each cask goes with `--zap`, which takes its application
+support, preferences and caches too. If one of them *fails* to uninstall, that
+is a `fail` like any other and the run stops before Homebrew — destroying the
+only tool that could remove an app you just failed to remove is exactly the
+leftover this step exists to prevent.
+
+Casks are itemised by name in the preview and counted nowhere else; the
+formula count above deliberately excludes them, so nothing is claimed twice.
 
 Three things it will not do, and the reasons are the interesting part:
 

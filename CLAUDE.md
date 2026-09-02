@@ -130,6 +130,23 @@ of what an apply moved aside. `fs_unlink` tests for `-L` and `fs_discard` for
 caller, because "the caller supplies the only safeguard" is the arrangement
 that eventually deletes something.
 
+**Spend Homebrew's knowledge before destroying it.** Homebrew's uninstaller
+deletes the prefix and nothing outside it, and two things it installs live
+outside: a cask's `.app`, which it *moves* into `/Applications` so it no longer
+resolves back into the Cellar, and a service's launchd plist in
+`~/Library/LaunchAgents`. Left alone, a full reset strands every GUI app on the
+machine -- still installed, with nothing left that can update or remove it,
+which is the single worst state an uninstall can leave behind. The fix is
+ordering, not machinery: `uninstall.sh` stops services and then
+`brew uninstall --cask --zap` every cask *by name*, while `brew` still works.
+A cask that fails to uninstall is a `fail`, so the `DOT_FAILURES` guard stops
+the run before the handoff -- tearing out the only tool that could remove an
+app you just failed to remove would manufacture the exact leftover the step
+exists to prevent. The corollary is a counting rule: `brew_headcount` is
+formulae-only on both sides, because the casks were already itemised by name
+and a preview that claims the same 28 applications twice is a preview nobody
+finishes reading.
+
 **macOS defaults are one-way, and that is written down rather than hidden.**
 `apply` never read the old values, so nothing anywhere has them, and `defaults
 delete` restores Apple's factory setting rather than yours. Making it
