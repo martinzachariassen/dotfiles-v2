@@ -25,6 +25,7 @@ cask "ghostty"       # terminal
 cask "raycast"       # Spotlight replacement
 cask "claude"        # Claude desktop app
 cask "bruno"         # API client; local files, no account
+cask "google-chrome" # browser
 cask "spotify"
 
 # $EDITOR points at this (see modules/zsh/home/.zshenv), so the zsh module's
