@@ -14,9 +14,9 @@
 # new machine. Everything else is a thing you install when you next want it,
 # and uninstall without editing a repo.
 #
-# The fonts stay here rather than moving to modules/ghostty with the terminal,
-# because nothing enables them alone and no single module owns them: zellij's
-# bar and the starship prompt draw with the same glyphs the terminal does.
+# The fonts stay here because nothing enables them alone and no single module
+# owns them: zellij's bar and the starship prompt draw with the same glyphs
+# the terminal does.
 
 # --- Daily drivers ----------------------------------------------------------
 cask "1password"     # SSH agent and git commit signing
@@ -26,6 +26,7 @@ cask "claude"        # Claude desktop app
 cask "bruno"         # API client; local files, no account
 cask "google-chrome" # browser
 cask "spotify"
+cask "cmux"
 
 # $EDITOR points at this (see modules/zsh/home/.zshenv), so the zsh module's
 # editor line and this cask are one decision in two files. The cask ships the
@@ -43,8 +44,5 @@ cask "stats"                # resource monitor in the menu bar
 # Both builds, deliberately. The Nerd Font is patched with the icon glyphs
 # the terminal, zellij's bar and the starship prompt draw with; the plain one
 # keeps an editor on the stock metrics the font was designed for.
-#
-# modules/ghostty names the patched one in its font-family, so that config line
-# and this cask are one decision in two files.
 cask "font-jetbrains-mono"           # editors (unpatched)
 cask "font-jetbrains-mono-nerd-font" # terminals (patched, has the glyphs)
