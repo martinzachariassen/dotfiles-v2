@@ -20,8 +20,7 @@
 # and uninstall without editing a repo.
 #
 # The fonts stay here because nothing enables them alone and no single module
-# owns them: zellij's bar and the starship prompt draw with the same glyphs
-# the terminal does.
+# owns them: the starship prompt draws with the same glyphs the terminal does.
 
 # --- Daily drivers ----------------------------------------------------------
 cask "1password"     # SSH agent and git commit signing
@@ -45,8 +44,8 @@ cask "thaw" # menu bar manager
 cask "stats"                # resource monitor in the menu bar
 
 # --- Fonts ------------------------------------------------------------------
-# Both builds, deliberately. The Nerd Font is patched with the icon glyphs
-# the terminal, zellij's bar and the starship prompt draw with; the plain one
-# keeps an editor on the stock metrics the font was designed for.
+# Both builds, deliberately. The Nerd Font is patched with the icon glyphs the
+# terminal and the starship prompt draw with; the plain one keeps an editor on
+# the stock metrics the font was designed for.
 cask "font-jetbrains-mono"           # editors (unpatched)
 cask "font-jetbrains-mono-nerd-font" # terminals (patched, has the glyphs)

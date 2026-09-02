@@ -117,7 +117,7 @@ never split across two modules, so a module is never half-enabled.
 |---|---|
 | `git` | config, plus a generator for the machine-local identity |
 | `ssh` | client config; keys stay in 1Password's agent |
-| `zsh` | XDG layout, aliases, PATH, `$EDITOR`, starship, zellij |
+| `zsh` | XDG layout, aliases, PATH, `$EDITOR`, starship |
 | `cmux` | the terminal, plus the Ghostty config it reads: Option stays native for AA/AE/OE |
 | `claude-code` | the CLI, plus the status line it renders |
 | `containers` | [Docker via colima](modules/containers/README.md), no Docker Desktop |

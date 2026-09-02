@@ -1,10 +1,9 @@
 # The interactive shell: everything that makes a terminal session what it is.
 #
-# zellij is here rather than in dev-cli because this module is the shell you
-# sit in, not a bag of tools -- the same reason starship is here. The terminal
-# emulator itself is not managed by this repo; only what runs inside it.
+# starship is here rather than in dev-cli because this module is the shell you
+# sit in, not a bag of tools. The terminal emulator itself is not managed by
+# this repo; only what runs inside it.
 
 brew "starship"                # prompt
-brew "zellij"                  # terminal multiplexer
 brew "zsh-autosuggestions"     # history-based inline suggestions
 brew "zsh-syntax-highlighting" # must be sourced last, see .zshrc
