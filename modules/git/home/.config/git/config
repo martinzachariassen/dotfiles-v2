@@ -30,6 +30,10 @@
 
 [core]
 	excludesfile = ~/.config/git/ignore
+	# `--wait` or git commits an empty message: without it `code` forks and
+	# returns before you have typed. Set here as well as in $EDITOR because git
+	# run from a GUI (an editor's own source control panel) inherits no shell.
+	editor = code --wait
 
 [column]
 	ui = auto

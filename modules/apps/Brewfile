@@ -27,6 +27,11 @@ cask "claude"        # Claude desktop app
 cask "bruno"         # API client; local files, no account
 cask "spotify"
 
+# $EDITOR points at this (see modules/zsh/home/.zshenv), so the zsh module's
+# editor line and this cask are one decision in two files. The cask ships the
+# `code` CLI as a binary stanza -- that is what `code --wait` resolves to.
+cask "visual-studio-code"
+
 # --- Menu bar and system ----------------------------------------------------
 # @beta is a versioned cask token, not a suffix Homebrew ignores: it tracks
 # Ice's beta channel and will not upgrade into the stable `jordanbaird-ice`.

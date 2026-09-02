@@ -165,7 +165,7 @@ __cfg_quote() {
 # it: that is what lets the comments below survive, and why enabling a module
 # later is an edit rather than a wizard re-run. Refuses to clobber.
 config_generate() {
-  local name=$1 email=$2 modules=$3 line
+  local name=$1 email=$2 modules=$3 signingkey=${4:-} line
 
   if cfg_exists; then
     fail "$DOT_CONFIG already exists -- delete it first to regenerate"
@@ -210,10 +210,18 @@ HEADER
     cat <<'FOOTER'
 # Per-module settings live under [settings.<module>]. A module reads them with
 # module_setting, and ignores anything it does not recognise.
-#
-# [settings.git]
-# signingkey = "ssh-ed25519 AAAA..."
 FOOTER
+
+    # The signing key is the PUBLIC half of a 1Password-held SSH key, so it
+    # ships in profiles.toml and lands here ready to use -- there is nothing to
+    # protect in it (GitHub serves everyone's at /<user>.keys). Written through
+    # __cfg_quote like every other value: it is user-supplied as far as this
+    # function knows, and one stray quote deletes the tables below it.
+    if [[ -n $signingkey ]]; then
+      printf '\n[settings.git]\nsigningkey = %s\n' "$(__cfg_quote "$signingkey")"
+    else
+      printf '#\n# [settings.git]\n# signingkey = "ssh-ed25519 AAAA..."\n'
+    fi
   } >"$DOT_CONFIG"
 
   ok "wrote $DOT_CONFIG"

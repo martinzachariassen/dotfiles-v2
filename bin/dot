@@ -150,7 +150,13 @@ cmd_config() {
   esac
 
   cfg_exists || die "No config yet. Create it with: dot config --init"
-  "${EDITOR:-vi}" "$DOT_CONFIG"
+  # Unquoted, deliberately. $EDITOR conventionally carries arguments -- ours is
+  # `code --wait` -- and quoted, bash looks for a binary named "code --wait"
+  # and reports "command not found" for a thing that is plainly installed.
+  # Splitting on whitespace is what every other $EDITOR consumer does; an
+  # editor whose PATH has spaces in it needs a wrapper script, not a rule here.
+  # shellcheck disable=SC2086
+  ${EDITOR:-vi} "$DOT_CONFIG"
 }
 
 # --- doctor ----------------------------------------------------------------

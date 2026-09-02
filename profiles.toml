@@ -9,6 +9,22 @@
 # validates whatever ends up in config.toml, so a typo is caught before any
 # work happens rather than silently skipped.
 
+# Git identity, and the public half of the SSH key that signs commits.
+#
+# Here rather than behind a prompt because none of it varies by machine: the
+# wizard copies these into config.toml and never asks. Change them there
+# afterwards -- config.toml is the source of truth once it exists, and nothing
+# reads this table again.
+#
+# The signing key is PUBLIC. A public key is safe in a repo by construction --
+# GitHub publishes everyone's at github.com/<user>.keys. The private half never
+# leaves 1Password; ssh only ever talks to its agent socket. Leave it empty and
+# the git module simply skips signing.
+[user]
+name = "Martin Zachariassen"
+email = "10747123+martinzachariassen@users.noreply.github.com"
+signingkey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDFG+XYhuxIpAr2LB8Y1AkOocZ+N/YpeDqNYUn/F68OR"
+
 [profiles]
-personal = ["git", "zsh", "dev-cli", "apps", "containers", "macos-defaults"]
-minimal = ["git", "zsh"]
+personal = ["git", "ssh", "zsh", "dev-cli", "apps", "containers", "macos-defaults"]
+minimal = ["git", "ssh", "zsh"]

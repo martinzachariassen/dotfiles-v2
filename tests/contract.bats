@@ -127,7 +127,7 @@ teardown() { teardown_sandbox; }
         echo "profile '$profile' lists unknown module '$name'"
         return 1
       }
-    done < <(toml_list "$DOT_ROOT/profiles.toml" "profiles.$profile")
+    done < <(toml_list "$DOT_ROOT/profiles.toml" "profiles[\"$profile\"]")
   done < <(toml_list "$DOT_ROOT/profiles.toml" 'profiles.keys()')
 }
 
@@ -151,4 +151,35 @@ teardown() { teardown_sandbox; }
 @test "Brewfiles exist only in core/ and modules/" {
   run bash -c "find '$DOT_ROOT' -name 'Brewfile*' -not -path '*/.git/*' | grep -cv -e '/core/' -e '/modules/'"
   [ "$output" = "0" ]
+}
+
+@test "a module contains no file the driver would ignore" {
+  # THE FAILURE THIS EXISTS FOR. modules/ssh/config once sat at the top of its
+  # module instead of in home/.ssh/, which is the only place fs_pairs looks. It
+  # looked installed, it was inert, and nothing caught it: shellcheck does not
+  # lint it, no hook sources it, and every other test here iterates a fixed
+  # list of names and so never saw it. The module reported healthy while ssh
+  # read no config at all.
+  #
+  # The names below are the whole vocabulary of a module directory -- the same
+  # closed set modules/CLAUDE.md documents. Adding to it is meant to be a
+  # deliberate edit here, in the open, exactly like adding a hook.
+  local stray=()
+  for path in "$DOT_ROOT"/modules/*/*; do
+    case ${path##*/} in
+      module.toml | Brewfile | README.md) ;;
+      apply.sh | doctor.sh | remove.sh) ;;
+      # home/ is a directory and its contents are mirrored verbatim, so nothing
+      # inside it is checkable by name -- that is the point of it.
+      home) [[ -d $path ]] || stray+=("${path#"$DOT_ROOT"/}") ;;
+      *) stray+=("${path#"$DOT_ROOT"/}") ;;
+    esac
+  done
+
+  [ ${#stray[@]} -eq 0 ] || {
+    printf 'the driver reads none of these:\n'
+    printf '  %s\n' "${stray[@]}"
+    printf 'a config file belongs under the module home/, at its path in $HOME\n'
+    return 1
+  }
 }

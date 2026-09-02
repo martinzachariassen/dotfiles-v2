@@ -74,6 +74,16 @@ There is no "custom" profile. Hand-assembling a module list is what the config
 file is for, and two ways to do the same thing is one too many. Profiles are
 only ever a first-run convenience -- `dot apply` never reads `profiles.toml`.
 
+`profiles.toml` also carries a `[user]` table -- name, email, and the public
+half of the SSH key that signs commits. **The wizard copies these into
+`config.toml` and never asks for them**, because none of the three varies by
+machine, and a prompt whose answer is always the same is ceremony. Change them
+in `config.toml` afterwards; nothing reads `profiles.toml` again.
+
+The signing key is safe in a public repo by construction: it is a *public* key,
+the kind GitHub already serves at `github.com/<user>.keys`. The private half
+never leaves 1Password.
+
 ## Modules
 
 A module is a directory. **The directory listing is the registry** -- there is
@@ -103,7 +113,8 @@ they show every shape the contract allows.
 | Module | What it is |
 |---|---|
 | `git` | config, plus a generator for the machine-local identity |
-| `zsh` | XDG layout, aliases, PATH, starship, zellij |
+| `ssh` | client config; keys stay in 1Password's agent |
+| `zsh` | XDG layout, aliases, PATH, `$EDITOR`, starship, zellij |
 | `dev-cli` | tools that are not baseline: gitleaks, lazygit, mise, claude-code |
 | `apps` | GUI casks and fonts: 1Password, Ghostty, Raycast, … |
 | `containers` | [Docker via colima](modules/containers/README.md), no Docker Desktop |
@@ -270,3 +281,36 @@ That is one Homebrew package in exchange for associative arrays, `mapfile`, and
 -- the reason it was worth doing -- correct line numbers in the crash report
 above. Bash 3.2 names a function's *definition* line rather than the failing
 one, so the number used to be left out entirely as worse than nothing.
+
+## SSH and commit signing
+
+There are no private keys on this machine. 1Password holds them and exposes an
+agent socket; `ssh` asks that agent to sign, and the key itself never leaves the
+vault. `modules/ssh` is the one line of config that points at it:
+
+```
+Host *
+  IdentityAgent "~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
+```
+
+That path is the same on every Mac -- `2BUA8C4S2C` is AgileBits' Apple team ID,
+not something per-user -- which is why it can be a tracked file rather than
+something generated.
+
+Commit signing rides on the same agent. `modules/git` writes `gpg.format = ssh`,
+`commit.gpgsign = true` and your `signingkey` into `config.local` whenever the
+key is set, so signing needs no second credential.
+
+One step cannot be automated: **1Password -> Settings -> Developer -> "Use the
+SSH agent"**. Until it is ticked the socket does not exist, and the failure
+never mentions SSH config -- `git push` reports `Permission denied (publickey)`,
+which reads as a key problem and sends you hunting through a key directory that
+is empty on purpose. `modules/ssh/doctor.sh` checks the socket, so `dot doctor`
+says so plainly instead.
+
+The machine-local override file is `Include`d **first**, so anything in it wins
+over the block above -- ssh takes the first value it obtains for each keyword.
+
+## License
+
+[MIT](LICENSE).

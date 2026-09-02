@@ -39,7 +39,7 @@ wizard_pick_modules() {
 }
 
 wizard_run() {
-  local profiles profile modules name email reply
+  local profiles profile modules name email signingkey reply
 
   # `none` writes an empty module list and skips the picker entirely: the
   # config file becomes the interface, and `dot apply` validates what you put
@@ -55,15 +55,23 @@ wizard_run() {
   if [[ $profile == none ]]; then
     modules=''
   else
-    modules=$(wizard_pick_modules "$(toml_list "$DOT_PROFILES" "profiles.$profile")")
+    # Bracket syntax, not `profiles.$profile`: dasel reads a dash as
+    # subtraction, so `work-laptop` parsed as `work` minus `laptop` and failed.
+    # toml_list swallows stderr, so the preset came back EMPTY and every module
+    # rendered unmarked -- a wrong menu, no error. Same landmine, same fix, as
+    # module_setting in lib/modules.sh.
+    modules=$(wizard_pick_modules "$(toml_list "$DOT_PROFILES" "profiles[\"$profile\"]")")
     [[ -z $modules ]] && __wizard_cancel
   fi
 
-  heading 'Git identity'
-  name=$(git config --global user.name || true)
-  email=$(git config --global user.email || true)
-  read -r -p "  Full name  [$name]: " reply && name=${reply:-$name}
-  read -r -p "  Email      [$email]: " reply && email=${reply:-$email}
+  # Identity is repo config, not a question: it is the same on every machine
+  # this repo is cloned to. It lives in profiles.toml, whose only reader is
+  # this wizard, and gets copied into config.toml -- which is yours to edit
+  # from that moment on. Asking twice for an answer that never varies was the
+  # kind of ceremony v1's 587-line wizard was made of.
+  name=$(toml_get "$DOT_PROFILES" 'user.name')
+  email=$(toml_get "$DOT_PROFILES" 'user.email')
+  signingkey=$(toml_get "$DOT_PROFILES" 'user.signingkey')
 
   # The config is written once and never rewritten, so a mis-pick survives
   # until you delete the file by hand. One look before that earns its lines.
@@ -74,12 +82,15 @@ wizard_run() {
     say 'modules   (none -- you add them to the config yourself)'
   fi
   say "identity  ${name:-(unset)} <${email:-(unset)}>"
+  # `if`, not `&&`: see CLAUDE.md. Truncated because a full key is 80 columns
+  # of base64 and the point here is "yes, one is set", not proofreading it.
+  if [[ -n $signingkey ]]; then say "signing   ${signingkey:0:36}..."; fi
   # Two failure modes, one line. A bare `read` tripped errexit on Ctrl-D and
   # reported a crash; letting it fall through would be worse still, because
   # ${reply:-y} reads end-of-input as yes and writes a config nobody confirmed.
   read -r -p '  Write this config? [Y/n]: ' reply || __wizard_cancel
   [[ ${reply:-y} == [Yy]* ]] || __wizard_cancel
 
-  config_generate "$name" "$email" "$modules"
+  config_generate "$name" "$email" "$modules" "$signingkey"
   [[ -n $modules ]] || dim "Add modules to $DOT_CONFIG, then run: dot apply"
 }

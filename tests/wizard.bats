@@ -174,11 +174,12 @@ in_strict_shell() {
 
 @test "wizard: the none profile writes an empty list and skips the picker" {
   fzf() { printf 'none\n'; }
-  # Three answers: name (keep the default), email (keep the default), confirm.
+  # One answer now: the confirm. Identity used to be two prompts here; it comes
+  # from profiles.toml since it never varied by machine.
   # This used to be `</dev/null`, which reached the confirm prompt at
   # end-of-input -- and since that read fell through to ${reply:-y}, the test
   # passed while proving nothing about a config anybody had agreed to.
-  run wizard_run < <(printf '\n\ny\n')
+  run wizard_run < <(printf 'y\n')
   [ "$status" -eq 0 ]
   [[ $output == *"(none"* ]]
   [ -f "$DOT_CONFIG" ]
@@ -201,6 +202,78 @@ in_strict_shell() {
   # __wizard_cancel exits, so nothing after wizard_run may run.
   [[ $output != *"REACHED-THE-END"* ]]
   [ ! -f "$DOT_CONFIG" ]
+}
+
+@test "profile: a hyphenated name resolves -- dasel reads a dash as subtraction" {
+  # The bug this exists for. `profiles.$profile` made dasel parse `work-laptop`
+  # as `work` MINUS `laptop` and fail. toml_list swallows stderr, so the preset
+  # came back EMPTY and the picker rendered every module unmarked: a silently
+  # wrong menu, no error, on a name that looks completely ordinary.
+  # lib/modules.sh documents the same landmine for [settings.<module>].
+  DOT_PROFILES="$DOT_TMP/profiles.toml"
+  cat >"$DOT_PROFILES" <<'EOF'
+[user]
+name = "Ada Lovelace"
+email = "ada@example.com"
+signingkey = ""
+
+[profiles]
+work-laptop = ["git"]
+EOF
+  # Call 1 picks the profile; call 2 is the module picker, which echoes its menu
+  # so the marker column is visible. A counter FILE, not a variable: fzf runs
+  # inside a pipeline, so an increment would die with the subshell.
+  fzf() {
+    if [[ -f $DOT_TMP/picked ]]; then
+      cat >&2
+      printf 'git\tgit\n'
+    else
+      : >"$DOT_TMP/picked"
+      printf 'work-laptop\n'
+    fi
+  }
+  run wizard_run < <(printf 'y\n')
+  [ "$status" -eq 0 ]
+  # `* git` renders only when the preset actually resolved to something.
+  [[ $output == *"* git"* ]]
+}
+
+@test "identity: comes from profiles.toml, and the wizard never asks" {
+  DOT_PROFILES="$DOT_TMP/profiles.toml"
+  cat >"$DOT_PROFILES" <<'EOF'
+[user]
+name = "Ada Lovelace"
+email = "ada@example.com"
+signingkey = "ssh-ed25519 AAAAKEY"
+
+[profiles]
+solo = ["git"]
+EOF
+  fzf() { printf 'none\n'; }
+  # Exactly one line of input: the confirm. Were the name and email still
+  # prompts, this `y` would be eaten as the name and the confirm would hit
+  # end-of-input and cancel -- so the assertions below double as the proof.
+  run wizard_run < <(printf 'y\n')
+  [ "$status" -eq 0 ]
+  [[ $output != *"Full name"* ]]
+  [ "$(cfg_get 'user.name')" = "Ada Lovelace" ]
+  [ "$(cfg_get 'user.email')" = "ada@example.com" ]
+  # Bracket syntax, because `settings.git` is a table name and dasel would read
+  # the dot fine here but not in [settings.macos-defaults]. One habit, always.
+  [ "$(cfg_get 'settings["git"].signingkey')" = "ssh-ed25519 AAAAKEY" ]
+}
+
+@test "identity: no signing key leaves a commented example, not an empty value" {
+  # An empty `signingkey = ""` in config.toml would make git/apply.sh skip
+  # signing -- correct -- but it reads as "configured, and blank". The footer
+  # example is the honest shape for "not set up yet".
+  config_generate 'A' 'a@b.c' '' ''
+  # cfg_get answers with its default, not a failure, for a key that is absent --
+  # so "unset" is an empty ANSWER here, not a non-zero status.
+  run cfg_get 'settings["git"].signingkey'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  grep -q '# signingkey = "ssh-ed25519 AAAA\.\.\."' "$DOT_CONFIG"
 }
 
 # --- The whole round trip ---------------------------------------------------
