@@ -17,8 +17,9 @@
 
 # Scripts that ship to a user's machine. Tests are checked too, but separately:
 # shfmt formats the bats helper, and bats checks the rest.
-SHIPPED := install.sh bin/dot lib/*.sh core/*.sh modules/*/apply.sh modules/*/doctor.sh
-FORMATTED := install.sh bin/dot lib/*.sh core/*.sh modules/*/*.sh tests/helper.bash
+SHIPPED := install.sh uninstall.sh bin/dot lib/*.sh core/*.sh \
+	modules/*/apply.sh modules/*/doctor.sh modules/*/remove.sh
+FORMATTED := install.sh uninstall.sh bin/dot lib/*.sh core/*.sh modules/*/*.sh tests/helper.bash
 
 # shfmt: 2-space indent, and indent the bodies of case statements.
 SHFMT_FLAGS := -i 2 -ci
@@ -56,7 +57,11 @@ MODULE_BUDGET := 150
 # the cap is that adding a file to it is a decision someone makes here, in the
 # open. Modules are the opposite -- found by glob, because the directory
 # listing is the registry and a new one must never need an edit in this file.
-ENGINE := install.sh bin/dot lib/*.sh core/*.sh
+# uninstall.sh is engine, not a module: it is the counterpart to install.sh and
+# it drives lib/ the way bin/dot does. Adding it here is the deliberate act the
+# comment above asks for -- the engine now removes what it installs, which is
+# scope it did not have before.
+ENGINE := install.sh uninstall.sh bin/dot lib/*.sh core/*.sh
 
 .PHONY: check lint fmt fmt-check test size
 

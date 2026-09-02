@@ -19,6 +19,9 @@ DOT_N_LINKED=0
 DOT_N_RELINKED=0
 DOT_N_BACKED_UP=0
 DOT_N_UNCHANGED=0
+# Read by uninstall.sh rather than by fs_report: an apply removes nothing, so
+# this line is always 0 in the report that fs_report prints.
+DOT_N_REMOVED=0
 
 # Set lazily on the first collision so a clean run leaves no empty directory
 # behind. One directory per `dot apply` invocation.
@@ -140,6 +143,44 @@ fs_link_tree() {
   done < <(fs_pairs "$1")
 }
 
+# --- Removal ----------------------------------------------------------------
+#
+# The two halves of an uninstall, kept apart on purpose. Everything this repo
+# puts in $HOME is either a symlink it made or a file it generated, and the two
+# are recognised in completely different ways: a link by where it points, a
+# generated file by name and by the header written into it. Merging them into
+# one "delete this path" helper would mean the caller supplies the only
+# safeguard, which is the arrangement that eventually deletes something.
+
+# fs_unlink DST -- remove a symlink this repo created.
+#
+# Narrower than `rm` by design: a real file at a path a module once owned is
+# left exactly where it is. Rule 2 at the top of this file says an apply never
+# destroys a real file, and an uninstall that did would make that promise good
+# only until the next command.
+fs_unlink() {
+  local dst=$1
+  [[ -L $dst ]] || return 0
+  info "unlink  ${dst/#$HOME/\~}"
+  [[ $DOT_DRY_RUN == 1 ]] || rm -f "$dst"
+  DOT_N_REMOVED=$((DOT_N_REMOVED + 1))
+}
+
+# fs_discard DST -- remove a real file this repo generated.
+#
+# Generated files are the ones no symlink scan can find: ~/.local/bin/dot and
+# ~/.config/git/config.local are written, not linked, because their contents
+# depend on this machine. Callers must establish ownership first -- both of
+# those carry a line naming the repo, and both are checked before they get
+# here.
+fs_discard() {
+  local dst=$1
+  [[ -f $dst ]] || return 0
+  info "remove  ${dst/#$HOME/\~}"
+  [[ $DOT_DRY_RUN == 1 ]] || rm -f "$dst"
+  DOT_N_REMOVED=$((DOT_N_REMOVED + 1))
+}
+
 # fs_check_tree DIR -- read-only drift report for one module.
 # Returns 1 if anything is out of place. Never modifies the filesystem.
 fs_check_tree() {
@@ -181,40 +222,33 @@ fs_report() {
   fi
 }
 
-# fs_orphans -- symlinks under $HOME that point into the repo but that no
-# enabled module claims. Left behind by disabling a module or by deleting a
-# file from the repo.
+# fs_repo_links -- every symlink under $HOME that points into this repo.
 #
 # This is why v2 needs no "what did I apply last time" state file: the
-# filesystem already records every link, so the answer is derivable. The scan
-# is bounded to directories some module's home/ actually declares, which keeps
-# it fast and stops it from walking all of $HOME.
-fs_orphans() {
-  # Two sets, as hash maps: every path an enabled module claims, and the
-  # directories to scan. `claimed` is a map so that "did anyone claim this
-  # link?" is one lookup instead of a scan, and `roots` is a map because its
-  # job is to collapse duplicates -- the same directory is named by every file
-  # a module puts in it.
-  local -A claimed=() roots=()
+# filesystem already records every link, so the answer is derivable. Two
+# callers read it, and between them they are the whole reason it is separate
+# from fs_orphans -- doctor wants the ones nobody claims, an uninstall wants
+# all of them, and neither should own the walk.
+#
+# The filter on "points into $DOT_ROOT" is what keeps this safe to delete from.
+# A link you made yourself, to somewhere else, is not this repo's to remove --
+# which is also why the containers module has to name its docker plugin links
+# in its own remove.sh: those point into Homebrew's prefix, not into here.
+fs_repo_links() {
+  # `roots` is a hash map because its job is to collapse duplicates -- the same
+  # directory is named by every file a module puts in it.
+  local -A roots=()
   local dir src dst link target
   local -a scan
 
+  # Where to look comes from EVERY module, not just the enabled ones. It used
+  # to come from the enabled set, which made the main case invisible: disabling
+  # a module dropped its directory from the scan, so the links it left behind
+  # -- the main thing this is for -- were never looked at.
+  #
   # `while read` over the module list, not `for dir in $(...)`: the unquoted
   # form word-splits, so a repo cloned into a path with a space in it scanned
   # the wrong directories.
-  while IFS= read -r dir; do
-    while IFS=$'\t' read -r src dst; do
-      claimed[$dst]=1
-    done < <(fs_pairs "$dir")
-  done < <(
-    modules_enabled_dirs
-    printf '%s\n' "$DOT_ROOT/core"
-  )
-
-  # Where to look comes from EVERY module, not just the enabled ones. Both used
-  # to come from the enabled set, which made the main case invisible: disabling
-  # a module dropped its directory from the scan, so the links it left behind
-  # -- what this function is for -- were never looked at.
   while IFS= read -r dir; do
     while IFS=$'\t' read -r src dst; do
       roots[$(dirname "$dst")]=1
@@ -236,7 +270,32 @@ fs_orphans() {
     while IFS= read -r -d '' link; do
       target=$(readlink "$link") || continue
       [[ $target == "$DOT_ROOT"/* ]] || continue
-      [[ -n ${claimed[$link]:-} ]] || printf '%s\n' "$link"
+      printf '%s\n' "$link"
     done < <(find "$dir" -maxdepth 1 -type l -print0 2>/dev/null)
   done
+}
+
+# fs_orphans -- the repo's links that no ENABLED module claims. Left behind by
+# disabling a module or by deleting a file from the repo.
+#
+# Only enabled modules claim, and that half must stay narrow: the scan above
+# deliberately looks in every module's directories, so letting a disabled
+# module claim its files back would hide every orphan the wide scan exposes.
+fs_orphans() {
+  # A map so that "did anyone claim this link?" is one lookup, not a scan.
+  local -A claimed=()
+  local dir src dst link
+
+  while IFS= read -r dir; do
+    while IFS=$'\t' read -r src dst; do
+      claimed[$dst]=1
+    done < <(fs_pairs "$dir")
+  done < <(
+    modules_enabled_dirs
+    printf '%s\n' "$DOT_ROOT/core"
+  )
+
+  while IFS= read -r link; do
+    [[ -n ${claimed[$link]:-} ]] || printf '%s\n' "$link"
+  done < <(fs_repo_links)
 }

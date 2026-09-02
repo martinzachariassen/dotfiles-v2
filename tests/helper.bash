@@ -22,7 +22,7 @@ setup_sandbox() {
   source "$DOT_ROOT/lib/dot.sh"
 
   # Counters are globals; reset them so tests do not see each other's tallies.
-  DOT_N_LINKED=0 DOT_N_RELINKED=0 DOT_N_BACKED_UP=0 DOT_N_UNCHANGED=0
+  DOT_N_LINKED=0 DOT_N_RELINKED=0 DOT_N_BACKED_UP=0 DOT_N_UNCHANGED=0 DOT_N_REMOVED=0
   DOT_FAILURES=0 DOT_WARNINGS=0
   __DOT_BACKUP_DIR=''
 }

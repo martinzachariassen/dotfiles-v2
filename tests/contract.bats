@@ -82,9 +82,12 @@ teardown() { teardown_sandbox; }
 }
 
 @test "hooks source the library and are shellcheck-clean" {
+  # Three hook names, and the list is closed. remove.sh joined it because the
+  # symlink sweep in uninstall.sh cannot see a link pointing outside the repo
+  # or a file the module generated; a fourth needs a gap that specific.
   local name hook path
   while IFS= read -r name; do
-    for hook in apply.sh doctor.sh; do
+    for hook in apply.sh doctor.sh remove.sh; do
       path="$DOT_ROOT/modules/$name/$hook"
       [ -f "$path" ] || continue
       grep -q 'lib/dot.sh' "$path" || {

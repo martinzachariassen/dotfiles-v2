@@ -27,6 +27,9 @@ dot config --init      Create it for the first time (runs the picker)
 dot doctor             Check this machine; read-only
 ```
 
+Removing it all again is `uninstall.sh`, not a fourth verb — see
+[Uninstalling](#uninstalling).
+
 Re-running `dot apply` is safe and expected. It is also the update path:
 
 ```sh
@@ -85,6 +88,7 @@ modules/<name>/
 ├── home/           optional   mirrors $HOME literally; leaf files are symlinked
 ├── apply.sh        optional   imperative, idempotent, run in its own process
 ├── doctor.sh       optional   read-only checks
+├── remove.sh       optional   cleanup the uninstaller cannot derive
 └── README.md       optional
 ```
 
@@ -128,6 +132,48 @@ Two rules matter:
 and any orphaned links left behind by a disabled module. It reports them; it
 never deletes anything in your home directory on its own.
 
+## Uninstalling
+
+```sh
+bash uninstall.sh --dry-run    # print every intended change, make none
+bash uninstall.sh              # do it
+```
+
+It is the counterpart to `install.sh` rather than a fourth `dot` verb: `bin/dot`
+is capped at three, and the most destructive thing the repo can do does not
+belong behind the command you type every day.
+
+A full reset — links, generated files, config, every Homebrew package, Homebrew
+itself, and finally the checkout. **Xcode Command Line Tools are left
+installed**, being macOS developer plumbing rather than something this repo
+chose for you.
+
+Three things it will not do, and the reasons are the interesting part:
+
+- **It never deletes your backup tree.** `~/.local/state/dotfiles/backups/`
+  holds real files an earlier `apply` moved aside because they were in the way.
+  Nothing else has a copy. "An apply never deletes" would be a promise good
+  only until the next command if an uninstall threw them away.
+- **It never deletes a real file** — only symlinks pointing into the repo, plus
+  the two generated files it can prove it wrote (`~/.local/bin/dot` and
+  `~/.config/git/config.local`, both of which carry the repo path or a
+  generated-by header).
+- **It cannot undo macOS defaults.** `apply` never read the old values, so they
+  exist nowhere; `defaults delete` would give you Apple's factory setting, not
+  what you had. Making that reversible means recording state at apply time,
+  which is a trade this repo has not made. It reports the domains instead.
+
+The preview is not a summary written by hand — `--dry-run` is the real code
+path with every mutating helper turned into a `printf`, so it cannot disagree
+with the real run. The interactive run shows you that preview and then asks you
+to type `remove`.
+
+Most of the work is derived rather than recorded: an uninstall is the orphan
+scan `dot doctor` already does, with nothing enabled, so every link into the
+repo is unclaimed by definition. A module only needs a `remove.sh` for what
+that scan structurally cannot see — `containers` links Homebrew's docker
+plugins, whose targets are outside the repo, and `git` writes a real file.
+
 ## Templating
 
 There isn't any, and that is a decision rather than an omission. Machine-local
@@ -153,8 +199,8 @@ Shell code is capped, and CI enforces it:
 
 | What | Cap | Why that shape |
 |---|---|---|
-| The engine: `install.sh`, `bin/dot`, `lib/`, `core/` | **1300 lines** | It is finished. Linking a file and reading a config do not get harder as you own more things. |
-| Each module's `apply.sh` + `doctor.sh` | **150 lines** | Enough for a module, not enough for a subsystem. |
+| The engine: `install.sh`, `uninstall.sh`, `bin/dot`, `lib/`, `core/` | **2500 lines** | The part v1 rotted in. The number tracks what the engine is *for*, never what it happens to weigh this week. |
+| Each module's shell scripts | **150 lines** | Enough for a module, not enough for a subsystem. |
 | The number of modules, and their sum | uncapped | This is the axis the repo is supposed to grow along. |
 | Tests | uncapped | `lib/fs.sh` moves files in `$HOME`, so it earns every test it has. |
 

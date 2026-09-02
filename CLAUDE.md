@@ -81,13 +81,53 @@ plus per-feature `feature.sh`) and a second ordering axis
 before the repo exists. v1 duplicated ~100 lines of UI into its bootstrap for
 this reason and the copies drifted; the fix is to have no UI worth sharing.
 
-**An apply never deletes.** Real files in the way are moved to the backup tree.
+**Uninstalling is `uninstall.sh` at the root, not a fourth verb.** `bin/dot` is
+capped at three, and the cap held: the most destructive thing the repo can do
+also does not belong behind the command you type every day. The real argument
+for the root, though, is that the last two steps remove the ground the script
+stands on -- Homebrew owns the bash 5 interpreting it, and `$DOT_ROOT` holds
+the file. So it ends the way `install.sh` does, with an `exec`: `install.sh`
+execs *into* the repo, `uninstall.sh` execs *out* of it, into a throwaway
+script under `/tmp` that depends on neither. That turns "when does bash re-read
+a deleted script" into a question nobody has to answer.
+
+**An uninstall is derived, not recorded.** No state file, for the same reason
+`fs_orphans` needs none: the filesystem already records every link. An
+uninstall is the orphan scan with nothing enabled, so every link into the repo
+is unclaimed by definition -- which is why `fs_repo_links` is the shared walk
+and `fs_orphans` is now a filter over it. The two verbs must never develop
+separate ideas of which links belong to this repo.
+
+**`remove.sh` is the third hook, and it exists for one specific gap.** The
+sweep filters on "points into `$DOT_ROOT`", and widening that filter would mean
+deleting links the repo never made. So the two things it structurally cannot
+see get named by their own module: `containers` links Homebrew's docker
+plugins, whose targets are outside the repo, and `git` writes a real file. A
+fourth hook needs a gap that specific.
+
+**An apply never deletes -- and neither does an uninstall, quite.** Real files
+in the way are moved to the backup tree.
 Orphaned links are reported by `dot doctor`, never removed. The orphan scan
 takes its directories from **every** module in the repo, not the enabled ones:
 a link left behind by a module you just disabled is the main thing it looks
 for, so deriving the scan from the enabled set hid exactly the case it exists
 to catch. Only enabled modules *claim* files -- that half must stay narrow, or
 widening the scan would hide every orphan it just exposed.
+
+`uninstall.sh` keeps the promise rather than voiding it one command later: it
+removes symlinks and two provably-generated files, never a real file, and it
+leaves the backup tree standing with a warning. Those backups are the only copy
+of what an apply moved aside. `fs_unlink` tests for `-L` and `fs_discard` for
+`-f` for exactly this reason -- the guard lives in the helper, not in each
+caller, because "the caller supplies the only safeguard" is the arrangement
+that eventually deletes something.
+
+**macOS defaults are one-way, and that is written down rather than hidden.**
+`apply` never read the old values, so nothing anywhere has them, and `defaults
+delete` restores Apple's factory setting rather than yours. Making it
+reversible means recording state at apply time -- a state file, which is the
+thing this repo does not have. `modules/macos-defaults/remove.sh` reports the
+domains and says why. If that trade is ever made, make it deliberately.
 
 **There is one way to hand-pick modules: editing `config.toml`.** The wizard
 offers the profiles in `profiles.toml` plus `none`, which writes an empty list
@@ -105,7 +145,8 @@ reports the same thing without dying, being the read-only verb.
 | `lib/` | 7 files, no subdirectories | v1's `core/` was this shape at 13 files / 1324 lines. Pressure to add an eighth is a signal to delete something. |
 | `module.toml` | 2 fields | Field creep is the path back to `feature.sh`. A third needs a written justification and an edit to `contract.bats`. `default` went with the `custom` profile that read it; `order` went once every module had settled on the same value. |
 | `lib/wizard.sh` | 60 lines | Where the 587-line monster regrows. If it needs a loop over a question schema, stop. |
-| `bin/dot` | 3 verbs, hardcoded `case` | A verb table grew to 84 lines with five drifting consumers. Modules ship scripts in `home/.local/bin/` instead. |
+| `bin/dot` | 3 verbs, hardcoded `case` | A verb table grew to 84 lines with five drifting consumers. Modules ship scripts in `home/.local/bin/` instead; `uninstall.sh` sits at the root. |
+| module hooks | 3 names: `apply.sh`, `doctor.sh`, `remove.sh` | Closed set, enforced by `contract.bats`. `remove.sh` earned its place on a gap the generic sweep cannot close, not on symmetry. |
 
 ## Review checkpoints
 

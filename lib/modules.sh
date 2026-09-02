@@ -166,6 +166,24 @@ module_doctor() {
   fold_status "$name: doctor.sh reported problems" module_run_hook "$name" doctor.sh
 }
 
+# module_remove NAME -- the module's own cleanup, for uninstall.sh.
+#
+# The third hook, and it earns its place on one specific gap rather than on
+# symmetry. The generic sweep removes symlinks that point INTO the repo, which
+# is most of what a module leaves behind but not all of it: the containers
+# module links Homebrew's docker plugins, whose targets live under brew's
+# prefix, and the git module writes a real file. Neither is visible to a scan
+# that filters on $DOT_ROOT -- and widening that filter would mean deleting
+# links this repo never made.
+#
+# Called for EVERY module in the repo, not the enabled ones. A module switched
+# off last month still left its files behind, and an uninstall is the one run
+# that is supposed to find them. It is optional like the other two: no
+# remove.sh means the sweep was enough.
+module_remove() {
+  fold_status "$1: remove.sh failed" module_run_hook "$1" remove.sh
+}
+
 # True if any enabled module declares sudo = true, so the driver can prime the
 # credential once up front instead of letting prompts interrupt a long run.
 modules_want_sudo() {

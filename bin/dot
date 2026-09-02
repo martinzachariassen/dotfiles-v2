@@ -41,6 +41,7 @@ usage: dot <command> [options]
 
 Config:  ~/.config/dotfiles/config.toml
 Repo:    see `dot doctor`
+Remove:  bash uninstall.sh --dry-run   (in the repo; not a verb, on purpose)
 EOF
 }
 
