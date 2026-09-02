@@ -27,8 +27,13 @@ fi
 # `colima status` CREATES ~/.colima on a machine that never had a VM. Asking
 # first and testing afterwards made this hook warn about images it had just
 # conjured, and made --dry-run write to the disk it promises not to touch.
+#
+# The profile directory, not ~/.colima: home/.colima/_templates/default.yaml is
+# linked by this module, so the parent exists on a machine that never started a
+# VM -- testing it would resurrect exactly the bug above. doctor.sh tests the
+# same path and the two must agree.
 vm_on_disk=0
-if [[ -d $HOME/.colima ]]; then vm_on_disk=1; fi
+if [[ -d $HOME/.colima/default ]]; then vm_on_disk=1; fi
 
 # Stopped, never deleted. The VM is data: `colima delete` throws away every
 # image and volume in it, and stopping is reversible where deleting is not.

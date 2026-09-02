@@ -1,0 +1,45 @@
+# Defaults for colima instances that do not exist yet.
+#
+# Every `colima start` reads $COLIMA_HOME/_templates/default.yaml, for every
+# profile, and stops reading it the moment ~/.colima/<profile>/colima.yaml
+# exists. So this file shapes the first boot on a new machine and nothing
+# after it. One setting is the reason it is here.
+#
+# sshConfig: true is colima's default, and it means every `colima start`
+# prepends an Include line to ~/.ssh/config. That path is a symlink into this
+# repo, so the write lands in modules/ssh/home/.ssh/config: an absolute
+# /Users/<name>/ path committed to a public repo, placed above the
+# config.local Include that file documents as having to come first. Setting it
+# in ~/.colima/default/colima.yaml fixes the machine you already noticed it
+# on; setting it here fixes the next one before its first boot.
+#
+# EVERY OTHER KEY BELOW IS COLIMA'S OWN DEFAULT, RESTATED, AND MUST STAY.
+# The template replaces the command's flag defaults instead of merging over
+# them -- with sshConfig alone in this file, colima 0.10.3 starts with cpu 0,
+# disk 0, memory 0, runtime "" and no network mode. (Verified by diffing
+# `colima start --edit` with and against the file.) These ten keys are the
+# entire affected set; vmType, mountType, portForwarder and the rest come from
+# a different defaults path and survive an empty template untouched. Removing
+# a line here is not tidying it away, it is zeroing that field.
+#
+# cpu and memory are the exception: they are stated on purpose, not copied.
+# Having to name them anyway is what makes the choice free -- colima's stock 2
+# GiB is enough to run a container and not enough to build one, and the way
+# that fails is a buildkit step killed by the VM's OOM killer, reported as a
+# build error that never mentions memory. Both can be raised on an existing
+# instance later (`colima start --cpu 6 --memory 12`); disk can only be grown,
+# and arch and runtime not changed at all, which is why those stay at stock.
+
+cpu: 4
+disk: 100
+memory: 8
+arch: host # not aarch64: this file has to be right on an Intel mac too
+runtime: docker
+modelRunner: docker
+network:
+  mode: shared
+  interface: en0
+  gatewayAddress: 192.168.5.2
+mounts: []
+
+sshConfig: false
