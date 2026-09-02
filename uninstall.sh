@@ -146,6 +146,24 @@ else
   say 'None found.'
 fi
 
+# --- Logs -------------------------------------------------------------------------
+# Transcripts of past `dot apply` runs. Deleted, where the backups below are
+# kept: a log is output this repo generated about itself, not a file of yours it
+# moved out of the way. Through fs_discard so it goes down the same
+# provably-ours path as every other real file an uninstall removes.
+#
+# Before the backup section, not after, because that section removes $DOT_STATE
+# itself and refuses while anything unexpected is still inside it.
+heading 'Logs'
+if [[ -n $(find "$DOT_STATE/logs" -mindepth 1 -name '*.log' -print -quit 2>/dev/null) ]]; then
+  while IFS= read -r logfile; do
+    fs_discard "$logfile"
+  done < <(find "$DOT_STATE/logs" -maxdepth 1 -type f -name '*.log' | sort)
+  [[ $DOT_DRY_RUN == 1 ]] || rmdir "$DOT_STATE/logs" 2>/dev/null || true
+else
+  say 'None found.'
+fi
+
 # --- Backups -----------------------------------------------------------------------
 heading 'Backups'
 if [[ -n $(find "$DOT_STATE/backups" -mindepth 1 -print -quit 2>/dev/null) ]]; then
@@ -169,7 +187,11 @@ else
   # rather than a bare assignment because find exits 1 on a missing directory
   # and under `set -e` that would kill the script; a test context is exempt.
   if [[ -d $DOT_STATE ]]; then
-    if [[ -n $(find "$DOT_STATE" -mindepth 1 -not -path "$DOT_STATE/backups" -print -quit 2>/dev/null) ]]; then
+    # logs/ is excluded as well as backups/, and that exclusion is load-bearing
+    # in exactly one case: a dry run deletes nothing, so the section above left
+    # the directory standing and this test would report "left alone" for a run
+    # that really would have removed it. A dry run has to predict the real one.
+    if [[ -n $(find "$DOT_STATE" -mindepth 1 -not -path "$DOT_STATE/backups" -not -path "$DOT_STATE/logs*" -print -quit 2>/dev/null) ]]; then
       warn "left alone  ${DOT_STATE/#$HOME/\~} holds files this repo did not create"
     else
       info "remove  ${DOT_STATE/#$HOME/\~}"

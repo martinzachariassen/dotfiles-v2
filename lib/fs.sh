@@ -138,11 +138,24 @@ fs_link() {
 }
 
 # fs_link_tree DIR -- link every file in DIR/home into $HOME.
+#
+# Says something ONLY when it did nothing, which is the case fs_link cannot
+# cover: every change announces itself above, so a converged module printed an
+# empty section under its heading -- the same silence `dot doctor` had to fix
+# with 'all linked'. Six of eight modules looked like a step that died quietly.
+#
+# Phrased from the pre-state, not from what was done, so a dry run and a real
+# run still produce identical words (the property tests/fs.bats pins).
 fs_link_tree() {
-  local src dst
+  local src dst n=0 before=$DOT_N_UNCHANGED
   while IFS=$'\t' read -r src dst; do
     fs_link "$src" "$dst"
+    n=$((n + 1))
   done < <(fs_pairs "$1")
+
+  if ((n > 0 && DOT_N_UNCHANGED - before == n)); then
+    ok "files        all $n already linked"
+  fi
 }
 
 # --- Removal ----------------------------------------------------------------

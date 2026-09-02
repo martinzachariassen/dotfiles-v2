@@ -60,6 +60,53 @@ cmd_apply() {
     shift
   done
 
+  # --- Transcript ---
+  #
+  # A first install prints thousands of lines of Homebrew output and kept no
+  # record of any of it, so the one thing worth reading scrolled away. Written
+  # here rather than at the top of this file, and that is not tidiness:
+  #
+  #   - `dot config` must print NOTHING but the editor's own output, and
+  #   - no doctor hook may write inside $HOME (tests/contract.bats snapshots it).
+  #
+  # Both are asserted, so a redirect covering all three verbs fails the suite.
+  #
+  # 2>&1 merges stderr deliberately: a transcript missing every warn and fail is
+  # not a transcript. The cost is that `dot apply 2>/dev/null` no longer filters.
+  #
+  # No `wait` for the tee. It write()s each chunk straight through, so the FILE
+  # is complete at every instant; what can race the shell prompt is only tee's
+  # last write to the terminal. Waiting would mean closing stdout in the EXIT
+  # trap first, trading a cosmetic race for a possible hang.
+  local log=''
+  if [[ $DOT_DRY_RUN != 1 ]]; then
+    log="$DOT_STATE/logs/$DOT_RUN_ID.log"
+    mkdir -p "$DOT_STATE/logs"
+
+    # Pruned here, where the directory is created, so a state directory that
+    # only grows is never a thing anyone has to notice later. Sorted by NAME
+    # rather than by mtime: DOT_RUN_ID is a fixed-width timestamp, so the two
+    # orders agree, and lexical order needs no `ls` to produce.
+    #
+    # `touch` first, and BEFORE the tee. tee creates the file too, but it is
+    # started asynchronously -- so the count below raced it and kept 21 logs
+    # whenever the redirect had not landed yet. Creating it here means this run
+    # is one of the twenty by construction, whatever the scheduler does.
+    local old
+    touch "$log"
+    while IFS= read -r old; do
+      rm -f "$old"
+    done < <(find "$DOT_STATE/logs" -maxdepth 1 -type f -name '*.log' | sort -r | tail -n +21)
+
+    exec > >(tee -a "$log") 2>&1
+  fi
+
+  heading 'dot apply'
+  dim "repo    ${DOT_ROOT/#$HOME/\~}"
+  dim "config  ${DOT_CONFIG/#$HOME/\~}"
+  if [[ -n $log ]]; then dim "log     ${log/#$HOME/\~}"; fi
+  if [[ $DOT_DRY_RUN == 1 ]]; then dim 'dry run -- nothing will be changed'; fi
+
   # Phase 1. Installs dasel and fzf, which everything below depends on, so
   # nothing may run before it.
   heading 'Core packages'
@@ -114,24 +161,51 @@ cmd_apply() {
 
   # Read into an array first, so "how many were there" is the array's length
   # rather than a counter maintained by hand alongside the loop.
-  local name
+  local name i=0
   local -a names
   mapfile -t names < <(modules_enabled)
 
+  # The list up front, where the loop starts -- the honest place for it, since
+  # phase 1 has already run by the time the config can be read at all. `none`
+  # enabled is the zero case of this same block rather than its own branch
+  # further down: it is the expected state after choosing the `none` profile,
+  # and it needs to say what to do next.
+  heading 'Modules'
+  if ((${#names[@]} == 0)); then
+    say "None enabled. List them under [modules] in $DOT_CONFIG."
+  else
+    # printf, not IFS + "${names[*]}": that form joins on only the FIRST
+    # character of IFS, so ", " gives "apps,containers". Same fix as fs_report.
+    local list
+    list=$(printf ', %s' "${names[@]}")
+    say "${#names[@]} enabled: ${list:2}"
+  fi
+
   for name in "${names[@]}"; do
-    heading "Module: $name"
+    # [n/N] so a long first install says how much of it is left. The
+    # description is module.toml's one field, which until now only the wizard
+    # ever showed -- the heading names a module, this says what it is for.
+    i=$((i + 1))
+    heading "Module: $name  [$i/${#names[@]}]"
+    dim "$(module_desc "$name")"
     module_apply "$name"
   done
 
-  # The expected state after choosing the `none` profile, so say what to do
-  # next rather than silently applying core and stopping.
-  if ((${#names[@]} == 0)); then
-    heading 'Modules'
-    say "None enabled. List them under [modules] in $DOT_CONFIG."
-  fi
-
   heading 'Summary'
+  if ((${#names[@]} > 0)); then say "${#names[@]} modules"; fi
   fs_report
+  # The same three-way close as `dot doctor`'s Result, for the same reason: a
+  # bare list of counts under a run that printed warnings reads as success.
+  # `fail`/`warn` re-bump a tally that is already non-zero, which is harmless
+  # and keeps the glyph consistent with every other line.
+  if ((DOT_FAILURES > 0)); then
+    fail 'Finished with problems -- see the ✗ marks above.'
+  elif ((DOT_WARNINGS > 0)); then
+    warn 'Finished. There are warnings above worth a look.'
+  else
+    ok 'Done.'
+  fi
+  if [[ -n $log ]]; then dim "Full output: ${log/#$HOME/\~}"; fi
   [[ $DOT_DRY_RUN == 1 ]] && dim 'Dry run: nothing was changed.'
   return 0
 }
@@ -175,11 +249,20 @@ cmd_doctor() {
   fs_check_tree "$DOT_ROOT/core" || fail 'core files are not linked -- run: dot apply'
 
   # module_doctor tallies its own failures; both of these were `|| true` once.
-  local name
-  while IFS= read -r name; do
-    heading "Module: $name"
+  #
+  # Read into an array rather than streamed, for the same reason apply does it:
+  # [n/N] needs the total before the first heading is printed. The two verbs
+  # print the same heading, and someone comparing a doctor run against the apply
+  # that preceded it should not have to notice which one they are looking at.
+  local name i=0
+  local -a names
+  mapfile -t names < <(modules_enabled)
+  for name in "${names[@]}"; do
+    i=$((i + 1))
+    heading "Module: $name  [$i/${#names[@]}]"
+    dim "$(module_desc "$name")"
     module_doctor "$name"
-  done < <(modules_enabled)
+  done
 
   # Links into the repo that no enabled module claims -- left behind by
   # disabling a module or deleting a file. Reported, never deleted: the repo

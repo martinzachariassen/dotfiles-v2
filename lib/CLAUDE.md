@@ -47,6 +47,10 @@ Interpolate user input through `__cfg_quote` only.
   Narrow the first and you hide the disabled-module links it exists to find.
 - `fs_unlink` tests `-L`, `fs_discard` tests `-f`. The guard lives in the
   helper, never the caller.
+- `fs_link` is silent per unchanged file; `fs_link_tree` says one line when
+  **everything** was already in place. Changes narrate themselves, so that line
+  exists only to keep a converged module from printing an empty section. Phrase
+  it from the pre-state -- a dry run and a real run must use identical words.
 
 ## Process and state
 

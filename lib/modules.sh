@@ -133,6 +133,15 @@ module_apply() {
   local name=$1 dir packaged=1
   dir=$(modules_dir "$name")
 
+  # The same empty-section problem module_doctor solves below, on the apply
+  # side: a module that is a Brewfile and nothing else has no line of its own,
+  # so its heading sat above raw `brew bundle` chatter or -- with everything
+  # already installed -- above nothing at all. Said before the work, not after,
+  # because it explains the brew output that follows rather than summarising it.
+  if [[ ! -d $dir/home && ! -f $dir/apply.sh ]]; then
+    dim 'packages only'
+  fi
+
   # A failing Brewfile stops this module, not the run. brew_bundle has already
   # called `fail`, so the tally is right either way -- but called bare, its
   # `return 1` tripped `set -e` and every module after this one was skipped.

@@ -253,6 +253,26 @@ link_one() {
   [ -d "$DOT_STATE/backups" ]
 }
 
+@test "uninstall: transcripts are removed, and the state directory still goes" {
+  # Logs are deleted where backups are kept, and the distinction is the whole
+  # rule: a log is output this repo generated about itself, a backup is a file
+  # of yours it moved aside. The second half matters just as much -- a leftover
+  # logs/ directory would make the state directory look foreign to the check
+  # below it, so an uninstall would start leaving ~/.local/state/dotfiles behind.
+  DOT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  mkdir -p "$DOT_STATE/logs" "$DOT_STATE/backups"
+  printf 'a past run\n' >"$DOT_STATE/logs/20240101-000000.log"
+
+  run env DOT_ROOT="$DOT_ROOT" bash "$DOT_ROOT/uninstall.sh" --dry-run
+  [ "$status" -eq 0 ]
+  [[ $output == *"remove  ${DOT_STATE/#$HOME/\~}/logs/20240101-000000.log"* ]]
+  # The log must not make the state directory look like someone else's.
+  [[ $output != *"left alone"* ]]
+  [[ $output == *"remove  ${DOT_STATE/#$HOME/\~}"* ]]
+  # A dry run still deleted nothing.
+  [ -f "$DOT_STATE/logs/20240101-000000.log" ]
+}
+
 @test "uninstall: no state directory at all says nothing beyond None to keep" {
   # find exits 1 on a directory that is not there, and this used to be a bare
   # `stray=$(find ...)` -- which under `set -e` aborted the whole uninstall

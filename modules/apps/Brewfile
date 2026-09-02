@@ -36,9 +36,8 @@ cask "visual-studio-code"
 # @beta is a versioned cask token, not a suffix Homebrew ignores: it tracks
 # Ice's beta channel and will not upgrade into the stable `jordanbaird-ice`.
 # Switching channels means uninstalling one and installing the other.
-cask "jordanbaird-ice@beta" # menu bar manager
+cask "thaw" # menu bar manager
 cask "stats"                # resource monitor in the menu bar
-cask "pearcleaner"          # uninstaller that finds the leftovers
 
 # --- Fonts ------------------------------------------------------------------
 # Both builds, deliberately. The Nerd Font is patched with the icon glyphs

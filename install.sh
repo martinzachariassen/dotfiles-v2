@@ -15,6 +15,10 @@ REPO_DIR="${DOTFILES_DIR:-$HOME/Developer/personal/dotfiles-v2}"
 echo "==> dotfiles bootstrap"
 echo "    repo: $REPO_URL"
 echo "    into: $REPO_DIR"
+# The whole arc up front. Every step below announces itself as it starts, which
+# tells you where you are but never how far there is to go -- and step 1 can sit
+# for twenty minutes behind a GUI dialog.
+echo "    plan: 1 Xcode tools  2 Homebrew  3 bash 5  4 clone  5 dot apply"
 echo
 
 # "[n/5]" so an unattended run says where it is. A helper rather than the total
@@ -125,6 +129,8 @@ fi
 # From here the repo is on disk and `dot` owns the process: phase 1 installs
 # dasel and fzf, phase 2 asks what you want and applies it.
 step 5 "Handing off to dot apply"
+echo "    It installs the core packages, asks what you want on this machine,"
+echo "    then links your files. It writes a log and tells you where."
 echo
 
 # Under `curl | bash` this script's stdin is the pipe, not the keyboard, so the

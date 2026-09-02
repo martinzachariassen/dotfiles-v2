@@ -16,6 +16,13 @@ into `uninstall.sh` at the root.
   not change the exit status, or `dot doctor && ...` breaks on an orphaned link.
 - **The bash-5 re-exec** into `/opt/homebrew/bin/bash`, for shells that never
   sourced Homebrew's shellenv.
+- **The transcript redirect.** `apply` tees to `$DOT_STATE/logs/$DOT_RUN_ID.log`
+  and prunes to 20. **`apply` only** -- `dot config` must print nothing but the
+  editor's output (`tests/cli.bats`) and no doctor hook may write inside `$HOME`
+  (`tests/contract.bats`), so a redirect at the top of the file fails both.
+  Never under `--dry-run`: the log is the one file an apply writes that is not
+  a symlink. `uninstall.sh` removes the logs and must keep agreeing that
+  `logs/` is ours, or it starts leaving `$DOT_STATE` behind.
 
 ## Rules
 

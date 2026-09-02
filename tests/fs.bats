@@ -77,17 +77,42 @@ teardown() { teardown_sandbox; }
   [ ! -L "$HOME/.config/git" ]
 }
 
-@test "link: is idempotent and silent on the second run" {
+@test "link: touches nothing on the second run, and says it did nothing" {
+  # Idempotence, and the report of it. fs_link stays silent per file -- a run
+  # that narrated forty unchanged links would bury the three that moved -- but
+  # the TREE says one line, because the alternative is an empty section under
+  # a module heading, which reads as a step that died quietly.
   local m
   m=$(fixture_module git)
   fixture_file "$m" ".config/git/config"
 
   fs_link_tree "$m"
   DOT_N_LINKED=0 DOT_N_UNCHANGED=0
-  fs_link_tree "$m"
+  run fs_link_tree "$m"
 
+  [[ $output == *"all 1 already linked"* ]]
+
+  # `run` is a subshell, so re-do it here for the tallies.
+  DOT_N_LINKED=0 DOT_N_UNCHANGED=0
+  fs_link_tree "$m"
   [ "$DOT_N_LINKED" -eq 0 ]
   [ "$DOT_N_UNCHANGED" -eq 1 ]
+}
+
+@test "link: a tree that changed something does not also claim it did not" {
+  # The line above is the all-converged case ONLY. One file moving is enough to
+  # make "all already linked" a lie, and the change itself was announced above.
+  local m
+  m=$(fixture_module git)
+  fixture_file "$m" ".config/git/config"
+  fixture_file "$m" ".gitconfig"
+
+  fs_link_tree "$m"
+  rm "$HOME/.gitconfig"
+  run fs_link_tree "$m"
+
+  [[ $output == *"link    ~/.gitconfig"* ]]
+  [[ $output != *"already linked"* ]]
 }
 
 @test "link: a real file is moved to the backup tree, not overwritten" {

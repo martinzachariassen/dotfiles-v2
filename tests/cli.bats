@@ -60,6 +60,83 @@ pass_core_checks() {
   [ ! -e "$HOME/.local/bin/dot" ]
 }
 
+@test "apply: says which config it read before it changes anything" {
+  # The orientation block. An apply used to open on raw `brew bundle` output,
+  # so the one question worth answering first -- which config is this run
+  # obeying? -- was answerable only by guessing at the default path.
+  config_generate "A" "a@b.c" ""
+
+  dot apply --dry-run
+  [ "$status" -eq 0 ]
+  [[ $output == *"$DOT_CONFIG"* ]]
+  [[ $output == *"dry run -- nothing will be changed"* ]]
+}
+
+@test "apply: module headings say how many are left" {
+  config_generate "A" "a@b.c" "git"
+
+  dot apply --dry-run
+  [ "$status" -eq 0 ]
+  [[ $output == *"Module: git  [1/1]"* ]]
+  # And the list is stated up front, not discovered by watching it scroll.
+  [[ $output == *"1 enabled: git"* ]]
+}
+
+@test "apply: a real run leaves a transcript and names it" {
+  # The whole point of the log: a first install prints thousands of lines of
+  # Homebrew output, and the summary at the bottom is the part that scrolls
+  # away. brew is stubbed -- this is about the transcript, not about packages.
+  config_generate "A" "a@b.c" ""
+  mkdir -p "$DOT_TMP/stub"
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$DOT_TMP/stub/brew"
+  chmod +x "$DOT_TMP/stub/brew"
+
+  run env PATH="$DOT_TMP/stub:$PATH" "$DOT_ROOT/bin/dot" apply
+  [ "$status" -eq 0 ]
+
+  local log="$DOT_STATE/logs/$DOT_RUN_ID.log"
+  [ -f "$log" ]
+  # It is a transcript, not a summary: the sections above the end are in it.
+  [[ $(cat "$log") == *"Core packages"* ]]
+  [[ $(cat "$log") == *"Summary"* ]]
+  # And the run said where to find it, or it may as well not exist.
+  [[ $output == *"Full output:"* ]]
+}
+
+@test "apply: a dry run writes no log" {
+  # A dry run creates no files, and the log is a file. This is the only new
+  # write an apply does that is not a symlink, so it is the only one that could
+  # have slipped past the DOT_DRY_RUN guard.
+  config_generate "A" "a@b.c" ""
+
+  dot apply --dry-run
+  [ "$status" -eq 0 ]
+  [ ! -d "$DOT_STATE/logs" ]
+}
+
+@test "apply: keeps the twenty most recent logs" {
+  # A state directory that only grows is a mess someone finds in two years.
+  config_generate "A" "a@b.c" ""
+  mkdir -p "$DOT_TMP/stub" "$DOT_STATE/logs"
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$DOT_TMP/stub/brew"
+  chmod +x "$DOT_TMP/stub/brew"
+
+  # Names below this run's id, so they sort as older however the clock reads.
+  local i
+  for i in $(seq -w 1 25); do
+    printf 'old\n' >"$DOT_STATE/logs/00000000-0000$i.log"
+  done
+
+  run env PATH="$DOT_TMP/stub:$PATH" "$DOT_ROOT/bin/dot" apply
+  [ "$status" -eq 0 ]
+
+  local kept
+  kept=$(find "$DOT_STATE/logs" -name '*.log' | wc -l | tr -d ' ')
+  [ "$kept" -eq 20 ]
+  # This run's own log is one of the survivors, not a casualty of its own prune.
+  [ -f "$DOT_STATE/logs/$DOT_RUN_ID.log" ]
+}
+
 @test "doctor: an unlinked module fails the whole run" {
   # The regression, end to end and in the shape a user would hit it: enable a
   # module, do not apply it, ask whether the machine is healthy. doctor called

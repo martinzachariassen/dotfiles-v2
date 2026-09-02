@@ -117,6 +117,20 @@ hook() {
   [ "$DOT_FAILURES" -eq 2 ]
 }
 
+@test "apply: a packages-only module says so instead of printing nothing" {
+  # The apply-side twin of the doctor test above, and the more visible of the
+  # two: on a machine where everything is already installed, `brew bundle`
+  # prints nothing either, so `Module: apps` had an empty section under it in
+  # the middle of a run that was working perfectly.
+  local m
+  m=$(make_module demo)
+  rmdir "$m/home"
+
+  run module_apply demo
+  [ "$status" -eq 0 ]
+  [[ $output == *"packages only"* ]]
+}
+
 @test "doctor: counting a failure does not abort the caller" {
   # bin/dot calls module_doctor bare, inside a `while read` loop under `set -e`.
   # If it returned the failure instead of counting it, the first bad module
