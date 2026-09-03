@@ -8,8 +8,14 @@ trim_trailing_whitespace = true
 indent_style = space
 indent_size = 2
 
+# shfmt-specific key, read by both `make fmt` and the Bash IDE extension's
+# format-on-save. Without it, shfmt's default (case bodies unindented) wins
+# whenever a tool calls shfmt without the Makefile's explicit -ci flag --
+# which is what stripped the indent in core/doctor.sh.
+# bin/dot has no extension (see FORMATTED in Makefile) so it needs its own
+# pattern -- `*.sh` alone would miss it.
+[{*.sh,bin/dot}]
+switch_case_indent = true
+
 [*.md]
 trim_trailing_whitespace = false
-
-[Brewfile*]
-indent_size = 2

@@ -35,8 +35,8 @@ else
 fi
 
 case ":$PATH:" in
-*":$HOME/.local/bin:"*) ok 'PATH        includes ~/.local/bin' ;;
-*) fail 'PATH        missing ~/.local/bin (enable the zsh module, or add it)' ;;
+  *":$HOME/.local/bin:"*) ok 'PATH        includes ~/.local/bin' ;;
+  *) fail 'PATH        missing ~/.local/bin (enable the zsh module, or add it)' ;;
 esac
 
 # --- Config parses ----------------------------------------------------------
