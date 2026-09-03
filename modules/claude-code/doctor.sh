@@ -10,7 +10,7 @@ command -v jq >/dev/null 2>&1 || fail 'jq is not installed -- statusline.sh depe
 dest="$HOME/.claude/settings.json"
 script="$HOME/.claude/statusline.sh"
 # Must match apply.sh (tests/contract.bats).
-deny='["Bash(rm -rf *)","Bash(git push --force*)","Bash(git reset --hard*)","Bash(curl * | sh*)","Bash(curl * | bash*)","Read(~/.ssh/*)","Read(./.env)","Read(./.env.*)","Read(**/*.pem)","Read(**/id_rsa*)"]'
+deny='["Bash(rm -rf *)","Bash(git push --force*)","Bash(git reset --hard*)","Bash(curl * | sh*)","Bash(curl * | bash*)","Read(~/.ssh/**)","Read(~/.aws/**)","Read(~/.gnupg/**)","Read(~/.config/gh/**)","Read(./.env)","Read(./.env.*)"]'
 
 if [[ -f $dest ]]; then
   configured="$(jq -r '.statusLine.command // empty' "$dest" 2>/dev/null || true)"
