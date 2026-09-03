@@ -1,17 +1,7 @@
 #!/usr/bin/env bats
 #
-# modules/ssh -- the socket, and the config that names it.
-#
-# The module is two halves that must agree and cannot see each other: a tracked
-# ~/.ssh/config carrying an IdentityAgent line, and a doctor.sh that checks
-# whether anything is listening there. doctor.sh says so itself -- "THE TWO
-# MUST AGREE" -- and until this file nothing held them to it. Change the path
-# on one side and the check goes on passing against the old socket while ssh
-# reads the new one, which is the single way that hook could be worse than no
-# hook at all.
-#
-# Nothing below writes the socket path down. Both sides are extracted from the
-# files themselves, because a constant here would be the third copy.
+# modules/ssh: the tracked config and doctor.sh name the same socket, and
+# neither side is written down here -- a constant would be the third copy.
 
 load helper
 
@@ -23,9 +13,8 @@ setup() {
 
 teardown() { teardown_sandbox; }
 
-# The socket doctor.sh will test, with $HOME resolved to the argument. Textual
-# substitution rather than eval: the value is a path out of a tracked file, and
-# eval on it would be a habit worth not forming.
+# The socket doctor.sh tests, with $HOME substituted textually (no eval on a
+# value read out of a file).
 doctor_socket() {
   local s
   s=$(sed -n 's/^sock="\(.*\)"$/\1/p' "$DOCTOR")
@@ -45,8 +34,7 @@ doctor() {
   from_config=${from_config/#\~/$HOME}
   from_doctor=$(doctor_socket "$HOME")
 
-  # Both non-empty first, or a rename makes this pass over nothing, forever,
-  # without saying so -- the failure mode of every derived assertion.
+  # Both non-empty first, or a rename makes this pass over nothing forever.
   [ -n "$from_config" ] || {
     echo 'no IdentityAgent line in the shipped ssh config'
     return 1
@@ -67,9 +55,8 @@ doctor() {
 @test "doctor: a live agent socket passes" {
   command -v python3 >/dev/null || skip 'no python3 to make a unix socket'
 
-  # A SHORT $HOME on purpose. A unix socket path is capped at 104 bytes on
-  # macOS, and the sandbox's mktemp path plus "Library/Group Containers/..."
-  # goes past it -- bind() would fail and the test would read as a doctor bug.
+  # A SHORT $HOME: unix socket paths are capped at 104 bytes on macOS, and the
+  # sandbox path plus "Library/Group Containers/..." exceeds it.
   local short sock
   short=$(mktemp -d /tmp/dot-ssh.XXXXXX)
   sock=$(doctor_socket "$short")
@@ -84,8 +71,6 @@ doctor() {
 }
 
 @test "doctor: a missing socket warns without failing" {
-  # The state of every machine where the 1Password setting has not been ticked.
-  # WARN and not failure: nothing is broken, there is something to do.
   doctor
   [ "$status" -eq "$DOT_STATUS_WARN" ]
   [[ $output == *"not running"* ]]
@@ -93,9 +78,6 @@ doctor() {
 }
 
 @test "doctor: an ordinary file at the socket path is not healthy" {
-  # -S, not -e. A regular file there means something went wrong in a way -e
-  # would call fine, and the entire value of this hook is naming a failure that
-  # otherwise surfaces as "Permission denied (publickey)".
   local sock
   sock=$(doctor_socket "$HOME")
   mkdir -p "$(dirname "$sock")"
@@ -108,10 +90,8 @@ doctor() {
 # --- what the module actually ships -----------------------------------------
 
 @test "syntax: the shipped ssh config parses" {
-  # `make check` runs shellcheck and shfmt over *.sh, and this file is neither
-  # -- the same gap zsh.bats closes for the zsh files. A bad keyword here is
-  # not a warning: ssh exits 255 and EVERY connection stops, including the one
-  # you would pull the fix with. -G resolves the config without connecting.
+  # Not covered by shellcheck/shfmt. A bad keyword makes ssh exit 255 on EVERY
+  # connection, including the one you would pull the fix with.
   command -v ssh >/dev/null || skip 'no ssh on this machine'
   run ssh -G -F "$SSH_CONFIG" github.com
   [ "$status" -eq 0 ] || {
@@ -121,9 +101,7 @@ doctor() {
 }
 
 @test "the config actually points github.com at an agent" {
-  # Parsing is not matching. A `Host github.com-work` typo parses perfectly and
-  # silently applies to nothing, which is the inert-config failure that put the
-  # stray-file check into contract.bats in the first place.
+  # Parsing is not matching: a `Host github.com-work` typo parses and applies to nothing.
   command -v ssh >/dev/null || skip 'no ssh on this machine'
   run ssh -G -F "$SSH_CONFIG" github.com
   local resolved

@@ -1,13 +1,7 @@
 #!/usr/bin/env bats
 #
-# The module contract.
-#
-# This file is what makes "the directory listing is the registry" safe. With
-# no central manifest, nothing would otherwise stop a module from shipping a
-# broken manifest, a missing field, or a symlink inside home/. The invariant
-# is tested rather than remembered.
-#
-# It walks the same glob the driver walks, so a module cannot be exempt.
+# The module contract and the hard limits. Walks the same glob the driver
+# walks, so no module is exempt. Changing a limit means editing this file.
 
 load helper
 
@@ -42,11 +36,6 @@ teardown() { teardown_sandbox; }
 }
 
 @test "manifests carry no second field" {
-  # Field creep is the most likely path back to v1's feature.sh. A new field
-  # is allowed, but only deliberately -- which means editing this test.
-  # `default` went with the `custom` profile that read it; `order` went once
-  # every module had settled on the same value; `sudo` went once it turned out
-  # that no module ever needed root, which left `description` on its own.
   local name keys
   while IFS= read -r name; do
     keys=$(dasel -i toml -o yaml 'keys()' <"$(module_manifest "$name")" | sed 's/^- //' | sort | tr '\n' ' ')
@@ -58,7 +47,7 @@ teardown() { teardown_sandbox; }
 }
 
 @test "home/ contains no symlinks" {
-  # A committed symlink would be linked to, producing a link to a link.
+  # A committed symlink would be linked to: a link to a link.
   local name found
   while IFS= read -r name; do
     found=$(find "$DOT_ROOT/modules/$name" -path '*/home/*' -type l 2>/dev/null)
@@ -70,9 +59,6 @@ teardown() { teardown_sandbox; }
 }
 
 @test "hooks source the library and are shellcheck-clean" {
-  # Three hook names, and the list is closed. remove.sh joined it because the
-  # symlink sweep in uninstall.sh cannot see a link pointing outside the repo
-  # or a file the module generated; a fourth needs a gap that specific.
   local name hook path
   while IFS= read -r name; do
     for hook in apply.sh doctor.sh remove.sh; do
@@ -93,16 +79,8 @@ teardown() { teardown_sandbox; }
 }
 
 @test "no doctor.sh changes anything in \$HOME" {
-  # `dot doctor` is the one verb that promises to change nothing, and a hook is
-  # the easiest place to break that promise by accident -- the tool you ask
-  # for a status is not obliged to answer without writing. `colima status`
-  # CREATED ~/.colima/_lima before answering, so a doctor run on a machine that
-  # had never used containers left a directory behind, and the uninstaller's
-  # dry run then warned about a VM it had just conjured.
-  #
-  # Snapshotting $HOME around every hook catches the next one generically,
-  # which is the only way this stays caught: the specific offender is one
-  # command deep inside one module, and nothing else would have looked.
+  # `colima status` created ~/.colima/_lima just by being asked. Snapshotting
+  # around every hook is the only way this stays caught generically.
   local name before after
   before=$(home_snapshot)
   while IFS= read -r name; do
@@ -132,11 +110,8 @@ teardown() { teardown_sandbox; }
 }
 
 @test "every script with a shebang is executable" {
-  # The shim exec's bin/dot directly, so a missing +x bit breaks the CLI with
-  # a "Permission denied" that points at the shim rather than the cause.
+  # The shim exec's bin/dot directly; a missing +x reads as a shim error.
   local found
-  # `|| true`: the loop body's last iteration usually ends in a false test,
-  # which under bats' errexit would abort the assignment itself.
   found=$(find "$DOT_ROOT" -path "$DOT_ROOT/.git" -prune -o \
     \( -name '*.sh' -o -name 'dot' \) -type f -print |
     while IFS= read -r f; do
@@ -154,23 +129,13 @@ teardown() { teardown_sandbox; }
 }
 
 @test "a module contains no file the driver would ignore" {
-  # THE FAILURE THIS EXISTS FOR. modules/ssh/config once sat at the top of its
-  # module instead of in home/.ssh/, which is the only place fs_pairs looks. It
-  # looked installed, it was inert, and nothing caught it: shellcheck does not
-  # lint it, no hook sources it, and every other test here iterates a fixed
-  # list of names and so never saw it. The module reported healthy while ssh
-  # read no config at all.
-  #
-  # The names below are the whole vocabulary of a module directory -- the same
-  # closed set modules/CLAUDE.md documents. Adding to it is meant to be a
-  # deliberate edit here, in the open, exactly like adding a hook.
+  # modules/ssh/config once sat outside home/: looked installed, was inert,
+  # and nothing caught it. The names below are the whole vocabulary.
   local stray=()
   for path in "$DOT_ROOT"/modules/*/*; do
     case ${path##*/} in
       module.toml | Brewfile | README.md) ;;
       apply.sh | doctor.sh | remove.sh) ;;
-      # home/ is a directory and its contents are mirrored verbatim, so nothing
-      # inside it is checkable by name -- that is the point of it.
       home) [[ -d $path ]] || stray+=("${path#"$DOT_ROOT"/}") ;;
       *) stray+=("${path#"$DOT_ROOT"/}") ;;
     esac
@@ -182,4 +147,47 @@ teardown() { teardown_sandbox; }
     printf 'a config file belongs under the module home/, at its path in $HOME\n'
     return 1
   }
+}
+
+@test "every alias replacement is installed by the zsh module" {
+  # `alias ls=eza` with no eza is a shell where ls is command-not-found.
+  local cmd
+  for cmd in eza bat rg; do
+    case $cmd in rg) pkg=ripgrep ;; *) pkg=$cmd ;; esac
+    grep -qE "^brew \"$pkg\"" "$DOT_ROOT/modules/zsh/Brewfile" || {
+      echo "aliases.zsh uses $cmd but modules/zsh/Brewfile does not install $pkg"
+      return 1
+    }
+  done
+}
+
+# --- hard limits (root CLAUDE.md) --------------------------------------------
+
+@test "limit: lib/ has exactly 7 files and no subdirectories" {
+  [ "$(find "$DOT_ROOT/lib" -mindepth 1 -maxdepth 1 -type f -name '*.sh' | wc -l | tr -d ' ')" -eq 7 ]
+  [ -z "$(find "$DOT_ROOT/lib" -mindepth 1 -type d)" ]
+}
+
+@test "limit: lib/wizard.sh is at most 60 lines of code" {
+  local n
+  n=$(grep -cvE '^[[:space:]]*(#|$)' "$DOT_ROOT/lib/wizard.sh")
+  [ "$n" -le 60 ] || {
+    echo "lib/wizard.sh has $n lines of code; the cap is 60"
+    return 1
+  }
+}
+
+@test "limit: bin/dot has exactly three verbs" {
+  [ "$(grep -c '^cmd_[a-z]*() {' "$DOT_ROOT/bin/dot")" -eq 3 ]
+  local verb
+  for verb in apply config doctor; do
+    grep -q "^  $verb)" "$DOT_ROOT/bin/dot"
+  done
+}
+
+@test "claude-code: the allow/deny literals agree across its hooks" {
+  local dir="$DOT_ROOT/modules/claude-code"
+  [ "$(grep '^allow=' "$dir/apply.sh")" = "$(grep '^allow=' "$dir/remove.sh")" ]
+  [ "$(grep '^deny=' "$dir/apply.sh")" = "$(grep '^deny=' "$dir/remove.sh")" ]
+  [ "$(grep '^deny=' "$dir/apply.sh")" = "$(grep '^deny=' "$dir/doctor.sh")" ]
 }

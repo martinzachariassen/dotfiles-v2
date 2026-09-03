@@ -1,11 +1,6 @@
 #!/usr/bin/env bats
 #
-# bin/dot itself: how it reads the command line.
-#
-# This was the least-tested part of the repo, and it hid the worst kind of bug:
-# `dot apply --dry` matched no option, so the mistyped flag was ignored and the
-# machine was modified for real. Argument parsing now refuses anything it does
-# not recognise, and these tests hold it to that.
+# bin/dot: how it reads the command line, and the Result line of each verb.
 
 load helper
 
@@ -14,15 +9,9 @@ teardown() { teardown_sandbox; }
 
 dot() { run "$DOT_ROOT/bin/dot" "$@"; }
 
-# Make the CORE checks pass, so a doctor test can isolate the one thing it is
-# about and the status cannot have come from somewhere else. What
-# core/doctor.sh looks for is a shim on PATH naming this checkout.
-#
-# Produced by running the real generator, not by printf'ing a lookalike. A
-# hand-written copy is a second definition of the shim format: change
-# core/apply.sh and the fixture keeps passing core/doctor.sh while every real
-# machine fails it, so the six doctor tests below would go on proving something
-# about a file the repo no longer writes.
+# Make the core checks pass so a doctor test isolates one thing. The real
+# generator, not a printf'd lookalike: a hand-written shim is a second
+# definition of the format core/doctor.sh greps for.
 pass_core_checks() {
   DOT_DRY_RUN=0 bash "$DOT_ROOT/core/apply.sh" >/dev/null
   export PATH="$HOME/.local/bin:$PATH"
@@ -42,11 +31,10 @@ pass_core_checks() {
 }
 
 @test "apply: a mistyped --dry-run is refused, not ignored" {
-  # The regression. `--dry` used to fall through to a real apply.
   dot apply --dry
   [ "$status" -ne 0 ]
   [[ $output == *"unknown option '--dry'"* ]]
-  # And it stopped before phase 1, so nothing was installed on the way out.
+  # Stopped before phase 1.
   [[ $output != *"Core packages"* ]]
 }
 
@@ -56,14 +44,10 @@ pass_core_checks() {
   dot apply --dry-run
   [ "$status" -eq 0 ]
   [[ $output == *"Dry run: nothing was changed."* ]]
-  # The clearest evidence a dry run stayed dry: the shim it would have written.
   [ ! -e "$HOME/.local/bin/dot" ]
 }
 
 @test "apply: says which config it read before it changes anything" {
-  # The orientation block. An apply used to open on raw `brew bundle` output,
-  # so the one question worth answering first -- which config is this run
-  # obeying? -- was answerable only by guessing at the default path.
   config_generate "A" "a@b.c" ""
 
   dot apply --dry-run
@@ -78,14 +62,11 @@ pass_core_checks() {
   dot apply --dry-run
   [ "$status" -eq 0 ]
   [[ $output == *"Module: git  [1/1]"* ]]
-  # And the list is stated up front, not discovered by watching it scroll.
   [[ $output == *"1 enabled: git"* ]]
 }
 
 @test "apply: a real run leaves a transcript and names it" {
-  # The whole point of the log: a first install prints thousands of lines of
-  # Homebrew output, and the summary at the bottom is the part that scrolls
-  # away. brew is stubbed -- this is about the transcript, not about packages.
+  # brew is stubbed: this is about the transcript, not packages.
   config_generate "A" "a@b.c" ""
   mkdir -p "$DOT_TMP/stub"
   printf '#!/usr/bin/env bash\nexit 0\n' >"$DOT_TMP/stub/brew"
@@ -96,17 +77,13 @@ pass_core_checks() {
 
   local log="$DOT_STATE/logs/$DOT_RUN_ID.log"
   [ -f "$log" ]
-  # It is a transcript, not a summary: the sections above the end are in it.
   [[ $(cat "$log") == *"Core packages"* ]]
   [[ $(cat "$log") == *"Summary"* ]]
-  # And the run said where to find it, or it may as well not exist.
   [[ $output == *"Full output:"* ]]
 }
 
 @test "apply: a dry run writes no log" {
-  # A dry run creates no files, and the log is a file. This is the only new
-  # write an apply does that is not a symlink, so it is the only one that could
-  # have slipped past the DOT_DRY_RUN guard.
+  # The log is the one non-symlink file an apply writes.
   config_generate "A" "a@b.c" ""
 
   dot apply --dry-run
@@ -115,7 +92,6 @@ pass_core_checks() {
 }
 
 @test "apply: keeps the twenty most recent logs" {
-  # A state directory that only grows is a mess someone finds in two years.
   config_generate "A" "a@b.c" ""
   mkdir -p "$DOT_TMP/stub" "$DOT_STATE/logs"
   printf '#!/usr/bin/env bash\nexit 0\n' >"$DOT_TMP/stub/brew"
@@ -133,15 +109,11 @@ pass_core_checks() {
   local kept
   kept=$(find "$DOT_STATE/logs" -name '*.log' | wc -l | tr -d ' ')
   [ "$kept" -eq 20 ]
-  # This run's own log is one of the survivors, not a casualty of its own prune.
+  # This run's own log survives its own prune.
   [ -f "$DOT_STATE/logs/$DOT_RUN_ID.log" ]
 }
 
 @test "doctor: an unlinked module fails the whole run" {
-  # The regression, end to end and in the shape a user would hit it: enable a
-  # module, do not apply it, ask whether the machine is healthy. doctor called
-  # module_doctor as `|| true`, so it listed the unlinked files, then printed
-  # "Everything looks right" and exited 0.
   config_generate "A" "a@b.c" "git"
   pass_core_checks
 
@@ -153,9 +125,6 @@ pass_core_checks() {
 }
 
 @test "doctor: a warning is not drowned out by the summary" {
-  # Same shape as the bug above, one severity down. An orphaned link is
-  # reported and never deleted -- so the run has something to say and nothing
-  # to fail on, and the Result line used to answer "Everything looks right."
   config_generate "A" "a@b.c" ""
   pass_core_checks
 
@@ -167,15 +136,12 @@ pass_core_checks() {
   [[ $output == *"unclaimed"* ]]
   [[ $output != *"Everything looks right"* ]]
   [[ $output == *"warnings above"* ]]
-  # Still a success. A warning is not a failure, and `dot doctor && ...` has
-  # to keep working for anyone who has not tidied up yet.
+  # Still 0: `dot doctor && ...` must keep working.
   [ "$status" -eq 0 ]
 }
 
 @test "doctor: a clean machine still says so" {
-  # The other half, and the reason this is a test rather than an assumption: a
-  # summary that never says "fine" is exactly as useless as one that always
-  # does, and the new branch sits between the caller and that answer.
+  # A summary that never says "fine" is as useless as one that always does.
   config_generate "A" "a@b.c" ""
   pass_core_checks
 
@@ -186,11 +152,6 @@ pass_core_checks() {
 }
 
 @test "doctor: a shim that lost its executable bit is not called missing" {
-  # One test was answering two questions. `[[ -x $shim ]]` alone reported a
-  # shim sitting right there as "not installed in ~/.local/bin", which sends
-  # you to `dot apply` hunting for a file you already have -- while the real
-  # symptom is a "Permission denied" naming the shim and explaining nothing.
-  # A check that misdescribes what it found is worse than one that stays quiet.
   config_generate "A" "a@b.c" ""
   pass_core_checks
   chmod -x "$HOME/.local/bin/dot"
@@ -203,9 +164,6 @@ pass_core_checks() {
 }
 
 @test "doctor: a shim that is genuinely absent is still called missing" {
-  # The other side of the split: widening -x to -f would have been the easy
-  # fix and the wrong one, because then a non-executable shim reports
-  # "✓ dot installed" while the command dies. Both branches keep their word.
   config_generate "A" "a@b.c" ""
 
   run "$DOT_ROOT/bin/dot" doctor
@@ -216,11 +174,7 @@ pass_core_checks() {
 }
 
 @test "doctor: a stale module name is a failure, not a shrug" {
-  # doctor's job is to predict what will stop the next apply, and
-  # modules_require_known will. Reported rather than fatal because doctor is the
-  # read-only verb and has to reach the checks below this one -- so the risk is
-  # the opposite of apply's: a message that scrolls past under a green Result
-  # line. Both halves are asserted.
+  # Reported, not fatal: doctor is read-only and must reach the checks below.
   config_generate "A" "a@b.c" "$(printf 'git\ntypoo\n')"
   pass_core_checks
 
@@ -229,7 +183,6 @@ pass_core_checks() {
   [ "$status" -eq 1 ]
   [[ $output == *"unknown module 'typoo'"* ]]
   [[ $output != *"Everything looks right"* ]]
-  # It kept going: the per-module section for the name that IS real still ran.
   [[ $output == *"Module: git"* ]]
 }
 
@@ -248,18 +201,12 @@ pass_core_checks() {
 }
 
 @test "config: with no config yet, points at --init instead of opening an editor" {
-  # The bare `dot config` path had no test at all, and its failure mode is
-  # $EDITOR opening an empty buffer at a path nothing reads -- you type a config,
-  # save it, and the tool ignores it because the wizard never ran.
   EDITOR=false dot config
   [ "$status" -ne 0 ]
   [[ $output == *"dot config --init"* ]]
 }
 
 @test "config: opens \$EDITOR on the config file, and on nothing else" {
-  # Pins the two things that can be wrong here: which program is run, and which
-  # path it is handed. `${EDITOR:-vi}` unquoted would also split an EDITOR with
-  # arguments -- a real configuration -- so the fixture has one.
   config_generate "A" "a@b.c" ""
   printf '#!/usr/bin/env bash\nprintf "EDITED[%%s]\\n" "$@"\n' >"$DOT_TMP/fake-editor"
   chmod +x "$DOT_TMP/fake-editor"
@@ -270,9 +217,6 @@ pass_core_checks() {
 }
 
 @test "apply: a dry run on a fresh machine does not run the wizard" {
-  # config_generate declines to write under DOT_DRY_RUN, so the wizard asked
-  # for a profile, a module list, a name, an email and a confirmation, then
-  # threw all five answers away -- a preview of a run that could not happen.
   # The fzf stub is the tripwire: if the wizard is reached, it says so.
   mkdir -p "$DOT_TMP/stub"
   printf '#!/usr/bin/env bash\necho WIZARD-RAN\n' >"$DOT_TMP/stub/fzf"
@@ -283,15 +227,12 @@ pass_core_checks() {
   [ "$status" -ne 0 ]
   [[ $output != *"WIZARD-RAN"* ]]
   [[ $output == *"dot config --init"* ]]
-  # And not the misleading one: phase 1 was skipped on purpose, so there is no
-  # brew output above to check.
+  # Phase 1 was skipped on purpose, so there is no brew output to point at.
   [[ $output != *"brew output above"* ]]
   [ ! -f "$DOT_CONFIG" ]
 }
 
 @test "doctor: with no config, says how to make one rather than crashing" {
-  # Without the guard, doctor runs cfg_list against a file that is not there and
-  # the first thing the user sees is a dasel error.
   run "$DOT_ROOT/bin/dot" doctor
   [ "$status" -ne 0 ]
   [[ $output == *"dot config --init"* ]]

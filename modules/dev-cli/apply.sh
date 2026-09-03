@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 #
-# `mise activate` only rewrites PATH for versions already on disk -- it never
-# installs one, and the shell hook does not run at apply time anyway. Without
-# this, home/.config/mise/config.toml sits there linked and unread until
-# someone remembers to run `mise install` by hand.
+# `mise activate` never installs a runtime; linking config.toml alone leaves it
+# unread until someone runs `mise install` by hand.
 
 set -euo pipefail
 source "${DOT_ROOT:?}/lib/dot.sh"

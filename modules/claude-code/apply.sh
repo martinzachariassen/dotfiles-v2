@@ -1,26 +1,12 @@
 #!/usr/bin/env bash
 #
-# Point Claude Code's statusLine at the script home/ already linked into
-# place, and merge in a baseline permissions floor.
+# Wire the statusLine and merge a permissions floor into settings.json.
 #
-# settings.json carries permissions, hooks and everything else the user has
-# configured, so it is merged with jq rather than written whole -- the same
-# shape as the git module's config.local, minus the "generated" header:
-# settings.json is not this module's file to own, just one key inside it.
-# A sibling data file for $allow/$deny would dodge the duplication below, but
-# modules/CLAUDE.md closes the module directory to a fixed set of names --
-# contract.bats fails any file that is not in it, on purpose.
-#
-# permissions.allow/.deny are merged additively (existing + baseline, deduped),
-# never overwritten: an "Always allow" click in a session appends to these
-# arrays, and a plain assignment here would silently discard that on the next
-# `dot apply`. defaultMode uses //= for the same reason. doctor.sh and
-# remove.sh embed the same $allow/$deny literals -- keep all three in sync.
-#
-# jq is not guarded for. It comes from this module's own Brewfile, and the
-# driver skips apply.sh outright when a module's Brewfile fails -- that is the
-# one promise module_apply makes. Before the cask moved here, jq was dev-cli's
-# and this hook had to warn and skip, because dev-cli runs later.
+# Merged with jq, never written whole: settings.json is the user's file. The
+# allow/deny arrays are unioned so an "Always allow" click survives the next
+# apply. $allow/$deny are duplicated in doctor.sh and remove.sh -- a sibling
+# data file is not allowed by the module contract -- and tests/contract.bats
+# asserts the three copies agree.
 set -euo pipefail
 source "${DOT_ROOT:?}/lib/dot.sh"
 

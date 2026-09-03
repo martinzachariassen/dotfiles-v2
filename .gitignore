@@ -5,9 +5,8 @@
 *.swp
 *~
 
-# Local tooling, not part of the project
+# Local tooling
 .storecode/
 
-# Nothing generated lives in the repo: config goes to ~/.config/dotfiles,
-# state goes to ~/.local/state/dotfiles. If something shows up here that
-# needs ignoring, that is usually a sign it was written to the wrong place.
+# Nothing generated lives in the repo: config goes to ~/.config/dotfiles, state
+# to ~/.local/state/dotfiles. Something needing ignoring here is in the wrong place.

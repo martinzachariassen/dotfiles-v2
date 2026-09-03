@@ -1,17 +1,8 @@
 #!/usr/bin/env bats
 #
-# modules/macos-defaults/apply.sh -- the two values it derives from config.
-#
-# Everything here runs against a stub `defaults` on PATH, and that is not a
-# convenience. `defaults` talks to cfprefsd, which does not care what $HOME
-# says, so a test that let the real one through would rewrite the developer's
-# Dock and Finder settings every time the suite ran. Shadowing the command is a
-# stronger guarantee than trusting the module's own --dry-run branch: PATH
-# resolution holds whether or not the code under test is correct, which is the
-# property you want from the thing standing between a test and your machine.
-#
-# The stub doubles as the assertion -- it records every call, so these tests ask
-# what the module TRIED to write rather than what the machine ended up with.
+# modules/macos-defaults/apply.sh. `defaults` is shadowed on PATH: it talks to
+# cfprefsd, which ignores $HOME, so the real one would rewrite the developer's
+# settings. The stub records every call and doubles as the assertion.
 
 load helper
 
@@ -52,22 +43,17 @@ wrote() { grep -qF "$1" "$CALLS"; }
 }
 
 @test "tilesize: garbage is refused instead of silently becoming 0" {
-  # `defaults write ... -int big` exits 0 and stores 0, and a tilesize of 0 is a
-  # Dock whose icons have no width -- so the only report you get is that your
-  # Dock disappeared, with the config still reading `dock_tilesize = "big"`.
+  # `defaults write ... -int big` exits 0 and stores 0: a Dock with no icons.
   with_settings 'dock_tilesize = "big"'
   apply
   [ "$status" -ne 0 ]
   [[ $output == *"dock_tilesize"* ]]
-  # Not written at all: refusing has to mean the old value survives, or this is
-  # a louder version of the same bug.
+  # Refusing must mean the old value survives.
   run grep -c 'tilesize' "$CALLS"
   [ "$output" = "0" ]
 }
 
 @test "tilesize: 0 is refused as well" {
-  # The value garbage decays into, so a check that only tested for digits would
-  # wave through the one number that does the damage.
   with_settings 'dock_tilesize = 0'
   apply
   [ "$status" -ne 0 ]
@@ -75,10 +61,6 @@ wrote() { grep -qF "$1" "$CALLS"; }
 }
 
 @test "tilesize: one bad field does not cost you the rest of the module" {
-  # Why it is a fail and not a die. The Finder and keyboard settings have
-  # nothing to do with the Dock, and losing them to a typo three lines above
-  # would make the module's behaviour depend on the order its writes happen to
-  # be in.
   with_settings 'dock_tilesize = "big"'
   apply
   [ "$status" -ne 0 ]
@@ -97,9 +79,6 @@ wrote() { grep -qF "$1" "$CALLS"; }
 }
 
 @test "screenshots: an absolute path is used as given, not nested under \$HOME" {
-  # It used to be prefixed unconditionally, so /Volumes/ext/Shots became
-  # \$HOME/Volumes/ext/Shots -- created without complaint, and screenshots then
-  # went somewhere the user had no reason to look.
   with_settings "screenshot_dir = \"$DOT_TMP/shots\""
   apply
   [ "$status" -eq "$DOT_STATUS_WARN" ] # the logout reminder always warns
@@ -108,8 +87,7 @@ wrote() { grep -qF "$1" "$CALLS"; }
 }
 
 @test "screenshots: a leading ~ is expanded, not taken literally" {
-  # A tilde in a TOML string is just a character; nothing expands it on the way
-  # in. Unhandled, this made a directory whose name was "~".
+  # A tilde in a TOML string is just a character.
   with_settings 'screenshot_dir = "~/Shots"'
   apply
   [ "$status" -eq "$DOT_STATUS_WARN" ] # the logout reminder always warns
@@ -127,8 +105,6 @@ wrote() { grep -qF "$1" "$CALLS"; }
 # --- dry run --------------------------------------------------------------------
 
 @test "dry run: describes the writes and makes none" {
-  # The guard is first in the file, so this also proves nothing above it reads
-  # config or touches the disk on the way to that check.
   with_settings 'dock_tilesize = 64'
   local before
   before=$(home_snapshot)

@@ -1,22 +1,13 @@
 #!/usr/bin/env bash
 #
-# Core apply. Deliberately almost empty -- core exists to make the phase
-# boundary visible in the tree, not to accumulate special cases.
+# Core apply. Near-empty on purpose: core marks the phase boundary.
 
 set -euo pipefail
 source "${DOT_ROOT:?}/lib/dot.sh"
 
-# Put `dot` on PATH, as a generated shim rather than a symlink.
-#
-# A symlink looks tidier but breaks the CLI: bash sets BASH_SOURCE to the
-# symlink's own path, so bin/dot would look for lib/ next to ~/.local/bin and
-# find nothing. Resolving that needs a readlink loop inside bin/dot, a second
-# copy of the one in lib/dot.sh that then has to stay in sync. The shim
-# sidesteps it by exporting DOT_ROOT and exec'ing the real path, so exactly one
-# place knows where the repo is and every hook inherits it.
-#
-# Generated rather than tracked in core/home/ because its content depends on
-# where you cloned the repo.
+# A generated shim, not a symlink: through a symlink BASH_SOURCE would point at
+# ~/.local/bin and bin/dot would look for lib/ there. core/doctor.sh and
+# uninstall.sh grep -F the DOT_ROOT line below to recognise it as ours.
 bin_dir="$HOME/.local/bin"
 target="$bin_dir/dot"
 
@@ -34,7 +25,6 @@ EOF
   ok "dot is at ~/.local/bin/dot"
 fi
 
-# XDG directories, so modules can assume they exist.
 if [[ $DOT_DRY_RUN != 1 ]]; then
   mkdir -p "$DOT_CONFIG_HOME" "$DOT_STATE_HOME" "$HOME/.local/share"
 fi

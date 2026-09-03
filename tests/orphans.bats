@@ -1,21 +1,17 @@
 #!/usr/bin/env bats
 #
-# fs_orphans once shipped with no test at all, and a runtime-only bug rode
-# along with it while CI stayed green. These pin the behaviour: what counts as
-# an orphan, and just as importantly what does not.
+# fs_orphans: what counts as an orphan, and what does not.
 
 setup() {
   load helper
   setup_sandbox
 
-  # A repo root inside the sandbox, so "points into the repo" is controllable
-  # and no test depends on the real checkout.
+  # A repo root inside the sandbox, so "points into the repo" is controllable.
+  # The manifest makes the module visible to the registry, which is where the
+  # scan roots come from.
   REPO="$DOT_TMP/repo"
   MODULE="$REPO/modules/demo"
   mkdir -p "$MODULE/home/.config/demo"
-  # The manifest is what makes the module visible to the registry, and
-  # fs_orphans now takes its scan roots from there rather than from whatever
-  # is enabled. Without it the fixture is a directory the repo does not know.
   printf 'description = "demo"\n' >"$MODULE/module.toml"
   DOT_ROOT="$REPO"
 }
@@ -66,27 +62,21 @@ claim_one() {
 }
 
 @test "orphans: nothing enabled is not an error" {
-  # claim_one first, deliberately. Without it $HOME/.config/demo does not
-  # exist, the output is empty whatever the code does, and the assertion below
-  # is checking nothing -- which is how this test used to be written.
+  # claim_one first: without it the directory does not exist and an empty
+  # output proves nothing.
   claim_one
   modules_enabled_dirs() { :; }
 
   run fs_orphans
   [ "$status" -eq 0 ]
-  # An empty claimed map must still produce a clean scan, not a bash error
-  # about an unset associative array.
+  # An empty claimed map must not trip bash's unset-associative-array errors.
   [[ $output != *"invalid option"* ]]
   [[ $output != *"unbound variable"* ]]
   [[ $output == *kept.conf* ]]
 }
 
 @test "orphans: a link left behind by a DISABLED module is reported" {
-  # The case this function exists for, and the one it used to miss entirely.
-  # Scan roots were derived from the ENABLED modules, so switching a module off
-  # removed its directory from the scan and every link it had left behind
-  # became invisible -- `dot doctor` printed "none" over a home directory still
-  # full of them, which is the one situation where the report matters.
+  # The case this function exists for: scan roots must come from ALL modules.
   claim_one
   modules_enabled_dirs() { :; } # the module is now disabled in the config
 
@@ -96,13 +86,8 @@ claim_one() {
 }
 
 @test "orphans: the two halves are separate -- wide scan, narrow claim" {
-  # The other half of the fix, and it needs BOTH kinds of module in one tree to
-  # say anything the previous test does not. Two modules put a file in the same
-  # directory; only one is enabled. The enabled module's file must be claimed
-  # and the disabled module's file must be an orphan -- from a single scan of a
-  # single directory, which is the only arrangement that can tell the two rules
-  # apart. Asserting merely that the output is non-empty, as this test once
-  # did, is implied by the test above and cannot fail on its own.
+  # Two modules, one directory, one enabled: the only arrangement where a single
+  # scan has to apply both rules at once.
   claim_one
 
   local other="$REPO/modules/other"
@@ -111,7 +96,6 @@ claim_one() {
   printf 'content\n' >"$other/home/.config/demo/live.conf"
   fs_link_tree "$other"
 
-  # `other` is on; `demo` is off but still contributes its directory.
   modules_enabled_dirs() { printf '%s\n' "$other"; }
 
   run fs_orphans
@@ -121,8 +105,7 @@ claim_one() {
 }
 
 @test "orphans: deleting a file from the repo orphans its link" {
-  # A sibling still lives in that directory, so the directory is still declared
-  # and the scan still looks there.
+  # A sibling keeps the directory declared, so the scan still looks there.
   claim_one
   printf 'x\n' >"$MODULE/home/.config/demo/going.conf"
   fs_link_tree "$MODULE"
@@ -134,27 +117,20 @@ claim_one() {
 }
 
 @test "orphans: the scan cannot see a directory no module declares any more" {
-  # THE BOUNDARY OF THE DERIVED APPROACH, pinned deliberately rather than
-  # discovered later. Where to look is derived from the files modules currently
-  # ship, so emptying a directory in the repo also removes it from the scan and
-  # the links left in $HOME become invisible -- to `dot doctor` AND to the
-  # uninstall sweep, which shares this walk.
-  #
-  # The alternative is walking the whole of $HOME, which was rejected on cost.
-  # This test exists so that if the trade is ever revisited it is revisited on
-  # purpose: change the behaviour and this test should fail loudly.
+  # THE BOUNDARY OF THE DERIVED APPROACH, pinned on purpose. Scan roots come
+  # from files modules currently ship; emptying a directory drops it from the
+  # scan, for doctor AND the uninstall sweep. Walking all of $HOME was rejected
+  # on cost. If that trade is revisited, this test should fail loudly.
   claim_one
   mkdir -p "$MODULE/home/.config/solo"
   printf 'x\n' >"$MODULE/home/.config/solo/only.conf"
   fs_link_tree "$MODULE"
   [ -L "$HOME/.config/solo/only.conf" ]
 
-  # The whole directory leaves the repo; the link in $HOME stays behind.
   rm -r "${MODULE:?}/home/.config/solo"
 
   run fs_orphans
   [ "$status" -eq 0 ]
   [[ $output != *only.conf* ]]
-  # Still sitting there, dangling, unreported.
   [ -L "$HOME/.config/solo/only.conf" ]
 }

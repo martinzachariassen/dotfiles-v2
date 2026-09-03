@@ -1,13 +1,7 @@
-# cmux embeds libghostty and reads this file for terminal input behaviour
-# (rendering settings only -- cmux's own UI lives in ~/.config/cmux/cmux.json).
-#
-# Left unset, cmux intercepts Option for Alt/Meta, which swallows the
-# Option-letter combos macOS uses for Norwegian AA/AE/OE (aa/ae/oe). Explicit
-# `false` keeps Option producing those characters everywhere, same as outside
-# the terminal.
+# Read by the libghostty cmux embeds. cmux's own UI is in ~/.config/cmux/cmux.json.
+
+# Left unset, Option becomes Alt/Meta and swallows the combos for AA/AE/OE.
 macos-option-as-alt = false
 
-# Nerd Font glyphs (statusline icons, git-branch symbol) render as tofu boxes
-# without this. "Mono" variant keeps icon glyphs locked to one cell width.
-# Installed via: brew install --cask font-jetbrains-mono-nerd-font
+# "Mono" variant keeps Nerd Font glyphs at one cell width. From modules/apps.
 font-family = "JetBrainsMono Nerd Font Mono"

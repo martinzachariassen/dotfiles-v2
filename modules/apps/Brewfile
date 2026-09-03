@@ -1,51 +1,20 @@
-# GUI applications and the fonts they render with.
-#
-# Casks, not formulae: Homebrew downloads the .app (or the .ttf) and puts it
-# where macOS looks. `brew bundle` handles both from the same file, so a GUI
-# app needs no machinery beyond this line -- which is why this is one module
-# and not one per app.
-#
-# The cut between this module and dev-cli is role, not packaging format: a
-# thing with a window or a menu bar item goes here, a thing you type goes
-# there. That is why the one CLI below sits next to the app it belongs to
-# rather than on its own.
-#
-# Both are grab-bags, though, and a module of its own outranks either. A tool
-# whose config this repo manages ships its package from that module's Brewfile
-# -- claude-code and cmux both used to be listed away from their config, and
-# enabling either module got you half a tool.
-#
-# What belongs here: something you would notice missing on the first day of a
-# new machine. Everything else is a thing you install when you next want it,
-# and uninstall without editing a repo.
-#
-# The fonts stay here because nothing enables them alone and no single module
-# owns them: the starship prompt draws with the same glyphs the terminal does.
+# GUI apps and fonts. Things with a window or menu bar item; CLIs go in
+# dev-cli. A tool whose config this repo manages ships its cask from its own
+# module instead (cmux, claude-code).
 
-# --- Daily drivers ----------------------------------------------------------
 cask "1password"     # SSH agent and git commit signing
 cask "1password-cli" # op; the SSH agent needs the app, not just this
-cask "raycast"       # Spotlight replacement
-cask "claude"        # Claude desktop app
-cask "bruno"         # API client; local files, no account
-cask "google-chrome" # browser
+cask "raycast"
+cask "claude"
+cask "bruno" # API client; local files, no account
+cask "google-chrome"
 cask "spotify"
+cask "visual-studio-code" # $EDITOR (modules/zsh/home/.zshenv) and git's editor
 
-# $EDITOR points at this (see modules/zsh/home/.zshenv), so the zsh module's
-# editor line and this cask are one decision in two files. The cask ships the
-# `code` CLI as a binary stanza -- that is what `code --wait` resolves to.
-cask "visual-studio-code"
+cask "thaw"  # menu bar manager
+cask "stats" # resource monitor in the menu bar
 
-# --- Menu bar and system ----------------------------------------------------
-# @beta is a versioned cask token, not a suffix Homebrew ignores: it tracks
-# Ice's beta channel and will not upgrade into the stable `jordanbaird-ice`.
-# Switching channels means uninstalling one and installing the other.
-cask "thaw" # menu bar manager
-cask "stats"                # resource monitor in the menu bar
-
-# --- Fonts ------------------------------------------------------------------
-# Both builds, deliberately. The Nerd Font is patched with the icon glyphs the
-# terminal and the starship prompt draw with; the plain one keeps an editor on
-# the stock metrics the font was designed for.
-cask "font-jetbrains-mono"           # editors (unpatched)
-cask "font-jetbrains-mono-nerd-font" # terminals (patched, has the glyphs)
+# Both builds: the Nerd Font has the glyphs the terminal and starship draw
+# with; the plain one keeps editors on stock metrics.
+cask "font-jetbrains-mono"
+cask "font-jetbrains-mono-nerd-font"

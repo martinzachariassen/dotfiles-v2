@@ -1,18 +1,13 @@
 #!/usr/bin/env bats
 #
-# The removal half of lib/fs.sh, and one end-to-end pass over uninstall.sh.
-#
-# What these are really pinning is the set of things an uninstall must NOT
-# touch. Getting "did it delete the link" right is easy; the expensive bugs are
-# all in the other direction -- a real file at a path a module used to own, a
-# link someone else made, a backup tree holding the only copy of a config.
+# The removal half of lib/fs.sh, and uninstall.sh end to end. Mostly pins what
+# an uninstall must NOT touch.
 
 setup() {
   load helper
   setup_sandbox
 
-  # A repo root inside the sandbox, so "points into the repo" is controllable
-  # and no test depends on the real checkout. Same shape as orphans.bats.
+  # A repo root inside the sandbox, so "points into the repo" is controllable.
   REPO="$DOT_TMP/repo"
   MODULE="$REPO/modules/demo"
   mkdir -p "$MODULE/home/.config/demo"
@@ -38,12 +33,7 @@ link_one() {
 }
 
 @test "unlink: leaves a real file alone, and does not claim otherwise" {
-  # The whole reason fs_unlink tests for -L instead of calling rm. A real file
-  # at a path a module once owned is the user's, whoever put it there.
-  #
-  # Both halves matter: silence is the second one. This is the only record an
-  # uninstall leaves, so a line announcing a removal that did not happen is a
-  # log that lies about what is still on the disk.
+  # Silence matters too: the output is the only record an uninstall leaves.
   mkdir -p "$HOME/.config/demo"
   printf 'mine\n' >"$HOME/.config/demo/kept.conf"
   run fs_unlink "$HOME/.config/demo/kept.conf"
@@ -68,7 +58,6 @@ link_one() {
 }
 
 @test "discard: a missing file is success, not failure" {
-  # Every caller runs on a machine that may have been half-uninstalled already.
   run fs_discard "$HOME/never-existed"
   [ "$status" -eq 0 ]
 }
@@ -89,10 +78,7 @@ link_one() {
 }
 
 @test "repo links: finds links from a DISABLED module too" {
-  # An uninstall has nothing enabled by definition, so this is not an edge case
-  # -- it is the only case. fs_orphans and fs_repo_links share this walk
-  # precisely so that neither verb can develop its own idea of which links
-  # belong to the repo.
+  # An uninstall has nothing enabled, so this is the only case.
   link_one
   modules_enabled_dirs() { :; }
   run fs_repo_links
@@ -118,17 +104,12 @@ link_one() {
 # --- uninstall.sh -----------------------------------------------------------------
 
 @test "uninstall: --dry-run exits clean and changes nothing" {
-  # Against the REAL repo, because the point is that the script as shipped runs
-  # end to end -- module hooks included -- without touching anything. $HOME is
-  # still the sandbox, so there is nothing of the caller's to lose.
+  # Against the REAL repo, module hooks included; $HOME is still the sandbox.
   DOT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   fs_link_tree "$DOT_ROOT/modules/git"
   [ -L "$HOME/.config/git/config" ]
 
-  # The whole of $HOME, not just the link. containers/remove.sh asked `colima
-  # status` whether the VM was running, and that question CREATES ~/.colima --
-  # so the dry run wrote to the disk it had just promised not to touch, and
-  # every named assertion in this test still passed.
+  # Snapshot the whole of $HOME: a hook's `colima status` once created ~/.colima.
   local before after
   before=$(home_snapshot)
 
@@ -147,10 +128,7 @@ link_one() {
 }
 
 @test "uninstall: applications are dealt with before Homebrew is" {
-  # The one ordering the script cannot get wrong. Homebrew MOVES a cask's .app
-  # to /Applications, so its own uninstaller leaves it there; only `brew` knows
-  # which apps those are, and only until it is gone. Removing casks after the
-  # handoff would strand every GUI app on the machine.
+  # Casks after the handoff would strand every GUI app (see uninstall.sh).
   DOT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 
   run env DOT_ROOT="$DOT_ROOT" bash "$DOT_ROOT/uninstall.sh" --dry-run
@@ -164,17 +142,8 @@ link_one() {
 }
 
 @test "uninstall: finds Homebrew even when the invoking shell cannot" {
-  # THE REGRESSION. Every other brew caller in the repo goes through brew_load;
-  # uninstall.sh called bare `brew` and nobody noticed, because the failure is
-  # silent and looks like good news. Run from a shell that never sourced
-  # `brew shellenv` -- which is exactly what `bash uninstall.sh` is -- every
-  # brew call produced nothing, so the preview reported no applications over a
-  # machine full of them and the run destroyed Homebrew anyway. Each of those
-  # .apps would have been left in /Applications with nothing able to remove it.
-  #
-  # Skipped rather than faked where there is no Homebrew to find: the property
-  # under test is "we locate a brew that is installed but not on PATH", and
-  # there is nothing to locate on a machine without one.
+  # `bash uninstall.sh` from a shell that never sourced shellenv is the normal
+  # way to run it. Skipped, not faked, where there is no brew to locate.
   command -v brew >/dev/null 2>&1 || skip 'no Homebrew on this machine'
   local n_casks
   n_casks=$(brew list --cask 2>/dev/null | wc -l | tr -d ' ')
@@ -182,24 +151,18 @@ link_one() {
 
   DOT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 
-  # A PATH with no Homebrew in it. "$BASH" is the interpreter already running,
-  # so the script still starts under bash 5 -- this test is about brew, not
-  # about the re-exec guard.
+  # "$BASH" is the running interpreter, so the re-exec guard is not in play.
   run env -u HOMEBREW_PREFIX PATH=/usr/bin:/bin:/usr/sbin:/sbin \
     DOT_ROOT="$DOT_ROOT" HOME="$HOME" DOT_STATE="$DOT_STATE" \
     DOT_CONFIG="$DOT_CONFIG" "$BASH" "$DOT_ROOT/uninstall.sh" --dry-run
 
   [ "$status" -eq 0 ]
 
-  # Asserted positively, by counting: every cask must be itemised by name. A
-  # negative assertion against the "nothing installed" wording would go quiet
-  # the day someone rewords that line, which is the same class of mistake as
-  # the bug itself.
+  # Counted positively; a negative match on wording would go quiet on a reword.
   local listed
   listed=$(printf '%s\n' "$output" | grep -c 'uninstall  ' || true)
   [ "$listed" -eq "$n_casks" ]
 
-  # And the headcount must land on the counted branch, not the vague fallback.
   [[ $output == *"formulae it manages"* ]]
 }
 
@@ -211,8 +174,6 @@ link_one() {
 }
 
 @test "uninstall: refuses to run unattended without --dry-run" {
-  # No terminal in bats, so this exercises the guard rather than simulating it.
-  # Without it, a copy-pasted line in a CI script would take out the machine.
   DOT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   run env DOT_ROOT="$DOT_ROOT" bash "$DOT_ROOT/uninstall.sh" </dev/null
   [ "$status" -ne 0 ]
@@ -220,11 +181,6 @@ link_one() {
 }
 
 @test "uninstall: a state directory holding foreign files is left alone" {
-  # The live case that produced this branch: ~/.local/state/dotfiles on the
-  # author's machine holds a brew-bundle.log from v1, which nothing in this
-  # repo writes or references. The old code was `rm -rf "${DOT_STATE:?}"`, so
-  # an uninstall deleted a file it did not create and could not restore -- and
-  # never mentioned it, in the preview or afterwards.
   DOT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   mkdir -p "$DOT_STATE"
   printf 'from an older tool\n' >"$DOT_STATE/brew-bundle.log"
@@ -237,28 +193,20 @@ link_one() {
 }
 
 @test "uninstall: removing the state directory is announced in the preview" {
-  # An empty backup tree is the one case where the directory really does go,
-  # and a deletion a --dry-run does not mention is a deletion nobody agreed to.
   DOT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   mkdir -p "$DOT_STATE/backups"
 
   run env DOT_ROOT="$DOT_ROOT" bash "$DOT_ROOT/uninstall.sh" --dry-run
   [ "$status" -eq 0 ]
-  # The state directory BY NAME. A bare `*"remove"*` matched the unconditional
-  # `remove <DOT_ROOT>` line at the end of every successful preview, so the
-  # branch under test could be deleted with this test still passing.
+  # BY NAME: a bare `*"remove"*` also matches the unconditional `remove <DOT_ROOT>`.
   [[ $output == *"remove  ${DOT_STATE/#$HOME/\~}"* ]]
   [[ $output != *"left alone"* ]]
-  # ...and the preview did not act on it.
   [ -d "$DOT_STATE/backups" ]
 }
 
 @test "uninstall: transcripts are removed, and the state directory still goes" {
-  # Logs are deleted where backups are kept, and the distinction is the whole
-  # rule: a log is output this repo generated about itself, a backup is a file
-  # of yours it moved aside. The second half matters just as much -- a leftover
-  # logs/ directory would make the state directory look foreign to the check
-  # below it, so an uninstall would start leaving ~/.local/state/dotfiles behind.
+  # A leftover logs/ would make the state directory look foreign to the check
+  # that follows, and the uninstall would start leaving it behind.
   DOT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   mkdir -p "$DOT_STATE/logs" "$DOT_STATE/backups"
   printf 'a past run\n' >"$DOT_STATE/logs/20240101-000000.log"
@@ -266,17 +214,13 @@ link_one() {
   run env DOT_ROOT="$DOT_ROOT" bash "$DOT_ROOT/uninstall.sh" --dry-run
   [ "$status" -eq 0 ]
   [[ $output == *"remove  ${DOT_STATE/#$HOME/\~}/logs/20240101-000000.log"* ]]
-  # The log must not make the state directory look like someone else's.
   [[ $output != *"left alone"* ]]
   [[ $output == *"remove  ${DOT_STATE/#$HOME/\~}"* ]]
-  # A dry run still deleted nothing.
   [ -f "$DOT_STATE/logs/20240101-000000.log" ]
 }
 
 @test "uninstall: no state directory at all says nothing beyond None to keep" {
-  # find exits 1 on a directory that is not there, and this used to be a bare
-  # `stray=$(find ...)` -- which under `set -e` aborted the whole uninstall
-  # before it reached Homebrew. The -d guard is load-bearing.
+  # find exits 1 on a missing directory; the -d guard in uninstall.sh is load-bearing.
   DOT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   [ ! -d "$DOT_STATE" ]
 

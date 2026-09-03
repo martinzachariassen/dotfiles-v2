@@ -3,34 +3,30 @@
 bats, one file per unit. **Uncapped and excluded from the size budget**, so
 "it would need a test" is never an argument against a change.
 
-## Sandbox
+## Rules
 
-`setup_sandbox` gives every test a throwaway `$HOME`. **Nothing may touch the
-real home directory.**
-
-Overriding `$HOME` is not enough: `XDG_CONFIG_HOME` and `XDG_STATE_HOME` are
-pinned too, or a real apply runs `mkdir -p` outside the sandbox on a machine
-that exports them. Counters and `DOT_RUN_ID` are reset per test. The library
-loads from the real repo; only `$HOME` is fake.
-
-Assert with `home_snapshot` diffs, not lists of paths you expect. Naming paths
-only tests the ones you thought of.
+- **Nothing may touch the real home directory.** `setup_sandbox` gives every
+  test a throwaway `$HOME` and pins `XDG_CONFIG_HOME`, `XDG_STATE_HOME`,
+  `DOT_RUN_ID` and the counters. The library loads from the real repo.
+- **Assert with `home_snapshot` diffs**, not lists of paths you expect.
+- **Properties, not constants.** `DOT_STATUS_WARN` is asserted not to collide
+  with a status bash owns, not to equal 3.
+- Dry runs write nothing: snapshot, run, snapshot.
+- Guards fire. That matters more than the happy path.
+- Hostile input to anything reaching TOML, git config or `defaults`.
+- Paths inside `.app` bundles are inputs (`DOT_OP_SSH_SIGN`, `DOT_CODE_BIN`),
+  so both branches run on a machine without the app.
 
 ## `contract.bats`
 
-This is what makes the registry-free design safe. It walks the same glob as the
-driver, so no module is exempt. Adding a `module.toml` field or a hook name
-means editing this file -- that friction is the point.
-
-## What to test
-
-- **Properties, not constants** -- `DOT_STATUS_WARN` is asserted not to collide
-  with any status the interpreter owns, not asserted to equal 3.
-- Dry runs write nothing (snapshot, run, snapshot).
-- Guards fire. That matters more than the happy path.
-- Hostile input to anything reaching TOML, git config or `defaults`.
+What makes the registry-free design safe. It walks the driver's glob, so no
+module is exempt, and it enforces every hard limit in the root `CLAUDE.md`.
+Adding a manifest field, a hook name, a `lib/` file or a verb means editing this
+file. That friction is the point.
 
 ## bats notes
 
-- bats installs its own ERR trap; `lib/dot.sh` checks for it before installing.
-- End teardown with `return 0` -- a false last statement fails the teardown.
+- bats installs its own ERR trap; `lib/dot.sh` checks before installing one.
+- End `teardown` with `return 0`.
+- `found=$(... | while ...; done || true)`: the last iteration usually ends in
+  a false test.

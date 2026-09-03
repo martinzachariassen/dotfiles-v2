@@ -1,5 +1,4 @@
-# Global gitignore. Things that should never reach a repository regardless of
-# which project you are in.
+# Global gitignore.
 
 # macOS
 .DS_Store

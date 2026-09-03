@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 #
-# Phase 0 bootstrap. This is the URL:
+# Phase 0 bootstrap. Runs before the repo exists, so: plain echo, no library.
 #
 #   curl -fsSL https://raw.githubusercontent.com/martinzachariassen/dotfiles-v2/main/install.sh | bash
-#
-# Everything interesting happens in `dot apply`, which this hands off to.
-#
 
 set -euo pipefail
 
@@ -15,14 +12,9 @@ REPO_DIR="${DOTFILES_DIR:-$HOME/Developer/personal/dotfiles-v2}"
 echo "==> dotfiles bootstrap"
 echo "    repo: $REPO_URL"
 echo "    into: $REPO_DIR"
-# The whole arc up front. Every step below announces itself as it starts, which
-# tells you where you are but never how far there is to go -- and step 1 can sit
-# for twenty minutes behind a GUI dialog.
 echo "    plan: 1 Xcode tools  2 Homebrew  3 bash 5  4 clone  5 dot apply"
 echo
 
-# "[n/5]" so an unattended run says where it is. A helper rather than the total
-# written out at each site, because last time a step was added the copies drifted.
 TOTAL_STEPS=5
 step() {
   printf '==> [%s/%s] %s\n' "$1" "$TOTAL_STEPS" "$2"
@@ -43,8 +35,7 @@ step() {
 }
 
 # --- 1. Xcode Command Line Tools --------------------------------------------
-# Homebrew needs a compiler and git. The GUI installer runs asynchronously, so
-# trigger it and wait rather than racing it.
+# The GUI installer is asynchronous: trigger it, then poll.
 if xcode-select -p >/dev/null 2>&1; then
   step 1 "Xcode Command Line Tools already installed"
 else
@@ -74,26 +65,18 @@ if [ -x /opt/homebrew/bin/brew ]; then
 else
   step 2 "Installing Homebrew (it will ask for your password)"
 
-  # One prompt up front beats several mid-run -- but priming it once is not
-  # enough. NONINTERACTIVE=1 means Homebrew's installer never stops to ask, and
-  # sudo's credential expires after five minutes, which a cold install on a slow
-  # connection takes longer than: it failed after the download with a permission
-  # error, on the machines least able to afford the retry. The loop refreshes it
-  # and stops by itself the moment refreshing stops working.
+  # sudo's credential expires after five minutes; a cold install on a slow
+  # connection takes longer, so keep it refreshed until it stops working.
   sudo -v
   while sudo -n true 2>/dev/null; do sleep 50; done &
   keepalive=$!
-  # Also on the error paths: `set -e` must not leave sudo renewing itself.
   trap 'kill "$keepalive" 2>/dev/null || true' EXIT
 
-  # /bin/bash on purpose: this is Homebrew's own installer, which supports the
-  # system shell. Everything belonging to THIS repo needs bash 5 -- installed
-  # in the next step.
+  # /bin/bash: Homebrew's installer supports the system shell. Bash 5 comes next.
   NONINTERACTIVE=1 /bin/bash -c \
     "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-  # Before the `exec` below, which keeps the PID and does not run EXIT traps:
-  # a keepalive left running here would follow `dot apply` around.
+  # Before the `exec` below, which runs no EXIT trap.
   kill "$keepalive" 2>/dev/null || true
   trap - EXIT
 
@@ -102,9 +85,8 @@ fi
 echo "    Homebrew at $(brew --prefix)"
 
 # --- 3. bash 5 ---------------------------------------------------------------
-# macOS ships bash 3.2 from 2007 and never updates it. Every script in this
-# repo needs 5, and they start running in step 5 -- before core/Brewfile gets
-# its turn -- so this one package cannot wait for the normal package phase.
+# One of four places that must agree on bash 5 (core/Brewfile, bin/dot,
+# lib/dot.sh). Installed here because step 5 needs it before core/Brewfile runs.
 if brew list --versions bash >/dev/null 2>&1; then
   step 3 "bash 5 already installed"
 else
@@ -126,17 +108,12 @@ else
 fi
 
 # --- 5. Hand off ------------------------------------------------------------
-# From here the repo is on disk and `dot` owns the process: phase 1 installs
-# dasel and fzf, phase 2 asks what you want and applies it.
 step 5 "Handing off to dot apply"
 echo "    It installs the core packages, asks what you want on this machine,"
 echo "    then links your files. It writes a log and tells you where."
 echo
 
-# Under `curl | bash` this script's stdin is the pipe, not the keyboard, so the
-# wizard is handed the terminal explicitly. Checked first: without a
-# controlling terminal the redirect fails with a bare "No such device or
-# address", which says nothing about what to do next.
+# Under `curl | bash` stdin is the pipe, so the wizard is handed the terminal.
 if [ ! -r /dev/tty ]; then
   echo "No terminal available, so the setup wizard cannot ask anything." >&2
   echo "Run this instead, from a terminal:" >&2

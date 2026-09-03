@@ -1,13 +1,7 @@
 #!/usr/bin/env bats
 #
-# The wizard was the only shipped file with no tests, and it held three bugs
-# that a single run would have caught. fzf is replaced by a shell function --
-# function lookup beats PATH, so no stub binary is needed -- which makes the
-# picker testable without a terminal.
-#
-# Several tests run the library in a fresh `bash -euo pipefail` process on
-# purpose: two of these bugs only bite under `set -e`, and bats does not
-# enable errexit inside a test body.
+# fzf is replaced by a shell function (function lookup beats PATH). Some tests
+# run in a fresh `bash -euo pipefail`: bats does not enable errexit in a test body.
 
 setup() {
   load helper
@@ -16,8 +10,7 @@ setup() {
 
 teardown() { teardown_sandbox; }
 
-# Run a snippet with the library loaded, under the same shell options bin/dot
-# uses. This is what makes a `set -e` abort observable as a failed status.
+# The same shell options bin/dot uses, so a `set -e` abort is observable.
 in_strict_shell() {
   run bash -euo pipefail -c "source \"\$DOT_ROOT/lib/dot.sh\"; $1"
 }
@@ -25,11 +18,8 @@ in_strict_shell() {
 # --- The module picker ------------------------------------------------------
 
 @test "picker: returns real module names, not words from the description" {
-  # Regression. Rows outside the profile are marked with a space, and the old
-  # `awk '{print $2}'` skipped leading whitespace -- so `dev-cli` came back as
-  # "Extra" and `macos-defaults` as "macOS", and both were silently dropped by
-  # modules_enabled as unknown. Only `zsh` survived, and only because its
-  # description happens to start with the word "zsh".
+  # Rows outside the profile are marked with a space; a parser that skips
+  # leading whitespace returns the first word of the description instead.
   fzf() { cat; } # the user confirms every row offered
 
   # A preset that excludes most modules, so most markers are a space.
@@ -58,10 +48,7 @@ in_strict_shell() {
 }
 
 @test "picker: preset rows are pre-toggled, not just starred" {
-  # Regression. `*` is cosmetic to fzf -- it never touched --multi's selection
-  # state, so a user who picked "personal" and just hit Enter (no manual Tabs)
-  # got only the highlighted row, not the profile. `--bind load:pos(N)+toggle`
-  # must drive the same toggle a Tab would, once per preset row.
+  # `*` is cosmetic to fzf; only pos(N)+toggle selects the row for Enter.
   fzf() {
     printf '%s\n' "$*" >"$DOT_TMP/fzf_args"
     cat
@@ -79,9 +66,7 @@ in_strict_shell() {
 }
 
 @test "picker: cancelling fzf yields nothing instead of killing the run" {
-  # Regression. Esc makes fzf exit 130; inside `modules=$(...)` under `set -e`
-  # that aborted the whole of `dot apply`, which also made the empty-result
-  # fallback below it unreachable.
+  # Esc makes fzf exit 130; inside `modules=$(...)` under `set -e` that is fatal.
   in_strict_shell '
     fzf() { cat >/dev/null; return 130; }
     out=$(wizard_pick_modules "git")
@@ -95,11 +80,8 @@ in_strict_shell() {
 
 # --- The `&&`-in-a-loop landmine --------------------------------------------
 #
-# The wizard's default-preset helper was `module_default "$name" && printf ...`,
-# so a false test on the LAST iteration left the loop at status 1 and `set -e`
-# killed the assignment. That helper is gone with the `custom` profile, but the
-# identical shape lives on in modules_enabled -- and there pipefail carries the
-# loop's status out through the trailing `| sort`, so it reaches the caller too.
+# A false test on the LAST iteration leaves a loop at status 1; in
+# modules_enabled pipefail carries that out through `| sort` to the caller.
 
 @test "enabled: an unknown module sorting last does not abort the caller" {
   config_generate "A" "a@b.c" "$(printf 'git\nzzz-bogus\n')"
@@ -154,8 +136,6 @@ in_strict_shell() {
 }
 
 @test "validate: an unknown module stops the run and says what is valid" {
-  # Hand-editing the config is the supported way to use the `none` profile, so
-  # a typo must not be a warning that scrolls past while apply reports success.
   config_generate "A" "a@b.c" "$(printf 'git\ntypoo\n')"
   run modules_require_known
   [ "$status" -eq 1 ]
@@ -176,8 +156,7 @@ in_strict_shell() {
 # --- No `custom` profile ------------------------------------------------------
 
 @test "wizard: offers none, and never offers custom" {
-  # `custom` was a second way to hand-assemble a module list; the config file
-  # is the first, and two ways to do it is one too many.
+  # The config file is the one way to hand-assemble a module list.
   local hits
   hits=$(grep -vE '^[[:space:]]*#' "$DOT_ROOT/lib/wizard.sh" | grep -c custom || true)
   [ "$hits" -eq 0 ]
@@ -195,11 +174,8 @@ in_strict_shell() {
 
 @test "wizard: the none profile writes an empty list and skips the picker" {
   fzf() { printf 'none\n'; }
-  # One answer now: the confirm. Identity used to be two prompts here; it comes
-  # from profiles.toml since it never varied by machine.
-  # This used to be `</dev/null`, which reached the confirm prompt at
-  # end-of-input -- and since that read fell through to ${reply:-y}, the test
-  # passed while proving nothing about a config anybody had agreed to.
+  # One answer: the confirm. Not `</dev/null` -- end-of-input cancels, and the
+  # test would prove nothing about a config anybody agreed to.
   run wizard_run < <(printf 'y\n')
   [ "$status" -eq 0 ]
   [[ $output == *"(none"* ]]
@@ -208,11 +184,8 @@ in_strict_shell() {
 }
 
 @test "wizard: end-of-input at the confirm prompt cancels and writes nothing" {
-  # Two bugs on one line. The read was bare, so Ctrl-D tripped errexit and the
-  # wizard reported a crash -- "lib/wizard.sh:77: read ... (exit 1)" -- instead
-  # of cancelling. And had it not, the fall-through was the worse half:
-  # ${reply:-y} reads end-of-input as YES, so a closed terminal would have
-  # written a config nobody confirmed, once, permanently.
+  # A bare read trips errexit on Ctrl-D; falling through would read
+  # end-of-input as YES via ${reply:-y}.
   in_strict_shell '
     fzf() { printf "none\n"; }
     wizard_run </dev/null
@@ -226,11 +199,9 @@ in_strict_shell() {
 }
 
 @test "profile: a hyphenated name resolves -- dasel reads a dash as subtraction" {
-  # The bug this exists for. `profiles.$profile` made dasel parse `work-laptop`
-  # as `work` MINUS `laptop` and fail. toml_list swallows stderr, so the preset
-  # came back EMPTY and the picker rendered every module unmarked: a silently
-  # wrong menu, no error, on a name that looks completely ordinary.
-  # lib/modules.sh documents the same landmine for [settings.<module>].
+  # `profiles.$profile` parses `work-laptop` as `work` minus `laptop`;
+  # toml_list swallows stderr, so the preset comes back EMPTY with no error.
+  # Same landmine as module_setting in lib/modules.sh.
   DOT_PROFILES="$DOT_TMP/profiles.toml"
   cat >"$DOT_PROFILES" <<'EOF'
 [user]
@@ -241,9 +212,9 @@ signingkey = ""
 [profiles]
 work-laptop = ["git"]
 EOF
-  # Call 1 picks the profile; call 2 is the module picker, which echoes its menu
-  # so the marker column is visible. A counter FILE, not a variable: fzf runs
-  # inside a pipeline, so an increment would die with the subshell.
+  # Call 1 picks the profile; call 2 is the module picker, which echoes its
+  # menu. A counter FILE: fzf runs inside a pipeline, so a variable would die
+  # with the subshell.
   fzf() {
     if [[ -f $DOT_TMP/picked ]]; then
       cat >&2
@@ -271,26 +242,21 @@ signingkey = "ssh-ed25519 AAAAKEY"
 solo = ["git"]
 EOF
   fzf() { printf 'none\n'; }
-  # Exactly one line of input: the confirm. Were the name and email still
-  # prompts, this `y` would be eaten as the name and the confirm would hit
-  # end-of-input and cancel -- so the assertions below double as the proof.
+  # Exactly one line of input: the confirm. Were identity still prompted, the
+  # `y` would be eaten as the name and the confirm would cancel.
   run wizard_run < <(printf 'y\n')
   [ "$status" -eq 0 ]
   [[ $output != *"Full name"* ]]
   [ "$(cfg_get 'user.name')" = "Ada Lovelace" ]
   [ "$(cfg_get 'user.email')" = "ada@example.com" ]
-  # Bracket syntax, because `settings.git` is a table name and dasel would read
-  # the dot fine here but not in [settings.macos-defaults]. One habit, always.
   [ "$(cfg_get 'settings["git"].signingkey')" = "ssh-ed25519 AAAAKEY" ]
 }
 
 @test "identity: no signing key leaves a commented example, not an empty value" {
-  # An empty `signingkey = ""` in config.toml would make git/apply.sh skip
-  # signing -- correct -- but it reads as "configured, and blank". The footer
-  # example is the honest shape for "not set up yet".
+  # `signingkey = ""` reads as "configured, and blank".
   config_generate 'A' 'a@b.c' '' ''
-  # cfg_get answers with its default, not a failure, for a key that is absent --
-  # so "unset" is an empty ANSWER here, not a non-zero status.
+  # cfg_get answers with its default for an absent key: an empty ANSWER, not a
+  # non-zero status.
   run cfg_get 'settings["git"].signingkey'
   [ "$status" -eq 0 ]
   [ -z "$output" ]
@@ -300,8 +266,6 @@ EOF
 # --- The whole round trip ---------------------------------------------------
 
 @test "round trip: what the picker returns is what apply enables" {
-  # The end-to-end property the awk bug broke: names chosen in the wizard must
-  # survive config_generate and come back out of modules_enabled unchanged.
   fzf() { cat; }
   local picked
   picked=$(wizard_pick_modules "$(printf 'git\n')")
@@ -313,29 +277,22 @@ EOF
 }
 
 @test "round trip: every name the wizard writes is one apply will accept" {
-  # The assertion here used to be `output != *"unknown module"*`, which cannot
-  # fail: that string lives in bin/dot, which this test never runs, and
-  # modules_enabled is silent by construction. Ask the validator instead --
-  # modules_require_known is the function `dot apply` actually gates on.
+  # Ask the validator `dot apply` gates on, not for a string that lives in
+  # bin/dot and can never appear here.
   fzf() { cat; }
   config_generate "A" "a@b.c" "$(wizard_pick_modules "$(printf 'git\n')")"
 
   run modules_require_known
   [ "$status" -eq 0 ]
-  # And nothing was rejected on the way through.
   [ -z "$(modules_unknown)" ]
 }
 
 # --- Stale module names -----------------------------------------------------
 
 @test "enabled: reading the module list is silent, however often it is read" {
-  # A single apply reads the list more than once -- the apply loop, the orphan
-  # scan -- and every one of them is a `< <(modules_enabled)` PROCESS
-  # SUBSTITUTION, i.e. a subshell. That is why warning from inside
-  # modules_enabled cannot be deduplicated with a cache variable: the flag is
-  # set in the subshell and thrown away with it. An earlier attempt passed a
-  # test that called `modules_enabled >/dev/null` directly and still printed
-  # the warning twice in a real run, so this test uses the real call shape.
+  # The real call shape: every reader is a `< <(modules_enabled)` subshell, so
+  # a warning inside cannot be deduplicated with a cache variable. Asserted as
+  # TOTALLY silent, not "silent about one phrase".
   config_generate "A" "a@b.c" "$(printf 'git\nbogus\n')"
   run bash -c '
     source "$DOT_ROOT/lib/dot.sh"
@@ -344,10 +301,6 @@ EOF
     while IFS= read -r n; do :; done < <(modules_enabled_dirs)
   '
   [ "$status" -eq 0 ]
-  # TOTALLY silent, not "silent about one phrase". The old assertion looked for
-  # "unknown module", a string that lives in bin/dot and can never appear here,
-  # so any wording of a warning added to modules_enabled would have slipped past
-  # -- which is the entire failure this test is meant to prevent.
   [ -z "$output" ]
 }
 

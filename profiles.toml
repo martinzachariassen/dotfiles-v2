@@ -1,25 +1,10 @@
-# Wizard presets.
-#
-# A profile is a starting point for the first-run checklist and NOTHING else.
-# `dot apply` never reads this file: the wizard turns your pick into an
-# explicit list in config.toml, and that list is what gets applied.
-#
-# The wizard also offers `none`, which is not listed here and cannot be: it
-# means "write an empty list and let me fill it in by hand". `dot apply`
-# validates whatever ends up in config.toml, so a typo is caught before any
-# work happens rather than silently skipped.
+# Wizard presets. Read only by `dot config --init`, which copies the pick into
+# config.toml; `dot apply` never reads this file. The wizard also offers
+# `none`, which writes an empty list.
 
-# Git identity, and the public half of the SSH key that signs commits.
-#
-# Here rather than behind a prompt because none of it varies by machine: the
-# wizard copies these into config.toml and never asks. Change them there
-# afterwards -- config.toml is the source of truth once it exists, and nothing
-# reads this table again.
-#
-# The signing key is PUBLIC. A public key is safe in a repo by construction --
-# GitHub publishes everyone's at github.com/<user>.keys. The private half never
-# leaves 1Password; ssh only ever talks to its agent socket. Leave it empty and
-# the git module simply skips signing.
+# Copied into config.toml, never asked: none of it varies by machine. The
+# signing key is the PUBLIC half (GitHub serves it at github.com/<user>.keys);
+# the private half never leaves 1Password. Empty means no signing.
 [user]
 name = "Martin Zachariassen"
 email = "10747123+martinzachariassen@users.noreply.github.com"

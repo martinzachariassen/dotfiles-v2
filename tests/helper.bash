@@ -1,9 +1,6 @@
 # shellcheck shell=bash
 #
-# Shared bats setup.
-#
-# Every test runs against a throwaway $HOME. Nothing in tests/ may touch the
-# real home directory -- these tests move and delete files for a living.
+# Shared bats setup. Every test runs against a throwaway $HOME.
 
 setup_sandbox() {
   DOT_TMP=$(mktemp -d)
@@ -15,21 +12,13 @@ setup_sandbox() {
   export DOT_DRY_RUN=0
   mkdir -p "$HOME"
 
-  # Pinned, not inherited. lib/dot.sh derives DOT_CONFIG_HOME and
-  # DOT_STATE_HOME from these, and core/apply.sh runs `mkdir -p` on both -- so
-  # on a developer machine that exports either of them, a test doing a real
-  # apply created directories OUTSIDE the sandbox. Overriding $HOME alone is
-  # not enough to contain a test suite; anything $HOME is only a default for
-  # has to be pinned too.
+  # Pinned, not inherited: a developer machine exporting these would make a
+  # real apply `mkdir -p` outside the sandbox.
   export XDG_CONFIG_HOME="$HOME/.config"
   export XDG_STATE_HOME="$HOME/.local/state"
 
-  # PATH is a default for $HOME too, and the same reasoning applies one level
-  # out. A mise shim resolves its runtimes under $HOME, so against the sandbox's
-  # empty one a bare `python3` does not fail -- it tries to INSTALL python over
-  # the network, and then fails only when GitHub rate-limits the download. That
-  # read as a doctor bug in ssh.bats, which wants a python3 that is python3.
-  # Dropping the shim directory falls through to the system binaries.
+  # A mise shim resolves runtimes under $HOME; against the empty sandbox a bare
+  # `python3` tries to install one over the network.
   local kept=() dir
   while IFS= read -r dir; do
     if [[ $dir != */mise/shims ]]; then kept+=("$dir"); fi
@@ -46,14 +35,10 @@ setup_sandbox() {
   # shellcheck source=../lib/dot.sh
   source "$DOT_ROOT/lib/dot.sh"
 
-  # Counters are globals; reset them so tests do not see each other's tallies.
   DOT_N_LINKED=0 DOT_N_RELINKED=0 DOT_N_BACKED_UP=0 DOT_N_UNCHANGED=0
   DOT_FAILURES=0 DOT_WARNINGS=0
 
-  # A fresh id per test, so one test's backup directory is never mistaken for
-  # the next one's. DOT_STATE moves with the sandbox too, which makes this belt
-  # and braces -- but fs_backup_used answers from the filesystem now, and a
-  # shared id is exactly the kind of thing that would make it answer wrongly.
+  # fs_backup_used answers from the filesystem, so ids must not be shared.
   export DOT_RUN_ID="test-$BATS_TEST_NUMBER"
 }
 
@@ -62,23 +47,13 @@ teardown_sandbox() {
   return 0
 }
 
-# home_snapshot -- a sorted listing of everything under $HOME that this repo
-# could plausibly be responsible for. Compare one taken before an operation
-# with one taken after to assert that nothing was written.
-#
-# Naming the paths you expect to survive only tests the paths you thought of,
-# which is how `colima status` got away with creating ~/.colima inside both a
-# doctor run and an uninstall dry run.
-#
-# ~/Library is pruned because it is not ours: Homebrew caches into
-# ~/Library/Caches the moment anything shells out to `brew`, and macOS writes
-# preferences there. Nothing in this repo links or generates below it.
+# home_snapshot -- sorted listing of $HOME; diff before/after to prove nothing
+# was written. ~/Library is pruned: brew and macOS write there on their own.
 home_snapshot() {
   find "$HOME" -path "$HOME/Library" -prune -o -print | sort
 }
 
-# fixture_module NAME -- a module directory outside the repo, so tests can
-# invent trees without polluting modules/.
+# fixture_module NAME -- a module directory outside the repo.
 fixture_module() {
   local dir="$DOT_TMP/modules/$1"
   mkdir -p "$dir/home"

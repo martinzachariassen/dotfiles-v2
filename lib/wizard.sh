@@ -1,42 +1,26 @@
 # shellcheck shell=bash
 #
-# First-run config generation. Runs exactly once per machine, after phase 1 has
-# installed fzf -- which is the whole reason this file is short. v1's wizard
-# ran under `curl | bash` before any tool existed and grew to 587 lines of
-# hand-rolled pickers.
-#
-# HARD CAP: 60 lines of code. If this needs a loop over a question schema,
-# stop and reconsider -- that is how the last one started.
+# First-run config generation. Runs after phase 1 has installed fzf, which is
+# why the picker is one call. Hard cap: 60 lines of code (tests/contract.bats).
 
 DOT_PROFILES="$DOT_ROOT/profiles.toml"
 
-# Esc and Ctrl-C make fzf exit 130 with no output, and inside `var=$(...)` that
-# status is fatal under `set -e`. Every picker therefore ends in `|| true` and
-# signals cancellation by printing nothing: `--multi` returns the highlighted
-# row on Enter, so an empty result can only mean the user backed out.
+# Esc/Ctrl-C make fzf exit 130 with no output; every picker ends in `|| true`
+# and signals cancellation by printing nothing.
 __wizard_cancel() {
   say 'Cancelled -- no config was written.'
   exit 0
 }
 
-# The module name travels as a hidden first field, not as a position in the
-# rendered text. It used to be recovered with `awk '{print $2}'`, which skips
-# leading whitespace -- so every row whose marker was a space yielded the first
-# word of the DESCRIPTION instead, and picking `dev-cli` wrote a module named
-# "Extra" into the config. `--with-nth=2` renders only the pretty column while
-# the full line, name included, still comes back on stdout.
+# The module name travels as a hidden first field (--with-nth=2), never
+# recovered from the rendered text.
 wizard_pick_modules() {
   local preset=$1 name mark i=0 preselect=''
   local -a names
   mapfile -t names < <(modules_all)
 
-  # Built here, in the main shell, and not inside the pipeline below: that
-  # pipeline's `while` runs in a subshell, so a `preselect` grown inside it
-  # vanishes the moment the pipe closes (shellcheck SC2031). `*` is cosmetic
-  # to fzf -- it never touches --multi's selection state -- so without this,
-  # Enter on an untouched picker returns only the highlighted row, not every
-  # starred one. `pos(N)+toggle` drives the same toggle a manual Tab would,
-  # once per preset row, so the profile you picked is what Enter confirms.
+  # `*` is cosmetic to fzf; pos(N)+toggle is what actually selects the preset
+  # rows. Built here, not inside the pipeline, which runs in a subshell.
   for name in "${names[@]}"; do
     i=$((i + 1))
     grep -qxF -- "$name" <<<"$preset" && preselect+="pos($i)+toggle+"
@@ -57,10 +41,7 @@ wizard_pick_modules() {
 wizard_run() {
   local profiles profile modules name email signingkey reply
 
-  # `none` writes an empty module list and skips the picker entirely: the
-  # config file becomes the interface, and `dot apply` validates what you put
-  # in it. There is deliberately no "custom" profile -- that was a second way
-  # to hand-assemble a list, and the config file is already the first.
+  # `none` writes an empty list; the config file is the only other route.
   heading 'Choose what to install'
   profiles=$(printf '%s\nnone\n' "$(toml_list "$DOT_PROFILES" 'profiles.keys()')")
   profile=$(printf '%s\n' "$profiles" | grep -v '^$' |
@@ -71,26 +52,16 @@ wizard_run() {
   if [[ $profile == none ]]; then
     modules=''
   else
-    # Bracket syntax, not `profiles.$profile`: dasel reads a dash as
-    # subtraction, so `work-laptop` parsed as `work` minus `laptop` and failed.
-    # toml_list swallows stderr, so the preset came back EMPTY and every module
-    # rendered unmarked -- a wrong menu, no error. Same landmine, same fix, as
-    # module_setting in lib/modules.sh.
+    # Bracket syntax: dasel reads `work-laptop` as subtraction.
     modules=$(wizard_pick_modules "$(toml_list "$DOT_PROFILES" "profiles[\"$profile\"]")")
     [[ -z $modules ]] && __wizard_cancel
   fi
 
-  # Identity is repo config, not a question: it is the same on every machine
-  # this repo is cloned to. It lives in profiles.toml, whose only reader is
-  # this wizard, and gets copied into config.toml -- which is yours to edit
-  # from that moment on. Asking twice for an answer that never varies was the
-  # kind of ceremony v1's 587-line wizard was made of.
+  # Identity never varies by machine, so it is read from profiles.toml, not asked.
   name=$(toml_get "$DOT_PROFILES" 'user.name')
   email=$(toml_get "$DOT_PROFILES" 'user.email')
   signingkey=$(toml_get "$DOT_PROFILES" 'user.signingkey')
 
-  # The config is written once and never rewritten, so a mis-pick survives
-  # until you delete the file by hand. One look before that earns its lines.
   heading 'Review'
   if [[ -n $modules ]]; then
     say "modules   $(tr '\n' ' ' <<<"$modules")"
@@ -98,12 +69,9 @@ wizard_run() {
     say 'modules   (none -- you add them to the config yourself)'
   fi
   say "identity  ${name:-(unset)} <${email:-(unset)}>"
-  # `if`, not `&&`: see CLAUDE.md. Truncated because a full key is 80 columns
-  # of base64 and the point here is "yes, one is set", not proofreading it.
   if [[ -n $signingkey ]]; then say "signing   ${signingkey:0:36}..."; fi
-  # Two failure modes, one line. A bare `read` tripped errexit on Ctrl-D and
-  # reported a crash; letting it fall through would be worse still, because
-  # ${reply:-y} reads end-of-input as yes and writes a config nobody confirmed.
+  # `|| cancel`: a bare read trips errexit on Ctrl-D, and falling through would
+  # read end-of-input as yes.
   read -r -p '  Write this config? [Y/n]: ' reply || __wizard_cancel
   [[ ${reply:-y} == [Yy]* ]] || __wizard_cancel
 

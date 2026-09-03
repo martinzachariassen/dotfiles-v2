@@ -1,20 +1,15 @@
 #!/usr/bin/env bash
 #
-# Only checks what fails silently: a broken statusLine just renders nothing,
-# and a missing deny entry is a security floor gone with no error anywhere --
-# both need doctor. A missing allow entry just costs an extra prompt, which is
-# loud by construction, so it is not checked here.
+# A broken statusLine renders nothing; a missing deny entry is a floor gone
+# with no error. A missing allow entry just costs a prompt, so it is not checked.
 set -euo pipefail
 source "${DOT_ROOT:?}/lib/dot.sh"
 
-# Checked even though this module's Brewfile installs it: doctor reports on the
-# machine as it is now, and a `brew uninstall jq` leaves the bar rendering
-# nothing with no error printed anywhere.
 command -v jq >/dev/null 2>&1 || fail 'jq is not installed -- statusline.sh depends on it (run: dot apply)'
 
 dest="$HOME/.claude/settings.json"
 script="$HOME/.claude/statusline.sh"
-# Must match apply.sh's $deny.
+# Must match apply.sh (tests/contract.bats).
 deny='["Bash(rm -rf *)","Bash(git push --force*)","Bash(git reset --hard*)","Bash(curl * | sh*)","Bash(curl * | bash*)","Read(~/.ssh/*)","Read(./.env)","Read(./.env.*)","Read(**/*.pem)","Read(**/id_rsa*)"]'
 
 if [[ -f $dest ]]; then

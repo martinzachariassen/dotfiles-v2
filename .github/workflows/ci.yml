@@ -10,21 +10,14 @@ permissions:
 
 jobs:
   check:
-    # macOS because the tests exercise BSD find, stat and readlink behaviour,
-    # and passing on GNU coreutils would prove nothing about the target.
+    # macOS: the tests exercise BSD find, stat and readlink.
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Install tooling
-        # bash is in the list because the repo targets bash 5 and the runner's
-        # /bin/bash is macOS's 3.2. Without it bats runs the suite under the
-        # wrong shell and everything here would prove nothing.
+        # bash: the runner's /bin/bash is 3.2, and the suite must run under 5.
         run: brew install bash bats-core dasel shellcheck shfmt
 
-      # Deliberately the same one command a developer runs before committing.
-      # This step used to spell out shellcheck, shfmt, bats and the size budget
-      # itself, which made CI a fourth copy of instructions that had already
-      # drifted apart. The commands now live in the Makefile only.
       - name: make check
         run: make check

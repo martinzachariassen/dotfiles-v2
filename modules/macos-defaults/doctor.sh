@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 #
-# Verify the settings apply.sh wrote are still in place. This module earns a
-# doctor because its failure mode is silent: an OS update or a Settings pane
-# can revert a value and nothing announces it. A sample, not an audit -- one
-# check per domain, so a wiped plist is caught without a line per write.
+# An OS update or a Settings pane can revert a value silently. A sample, not
+# an audit: one check per domain catches a wiped plist.
 
 set -euo pipefail
 source "${DOT_ROOT:?}/lib/dot.sh"
 
-# `defaults read` prints booleans as 1/0, hence numbers below, not true/false.
+# `defaults read` prints booleans as 1/0.
 check() {
   local domain=$1 key=$2 want=$3 label=$4 got
   got=$(defaults read "$domain" "$key" 2>/dev/null || echo '<unset>')

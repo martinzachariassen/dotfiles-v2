@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
 #
-# Undo the settings.json edits apply.sh makes. The script itself needs no
-# cleanup here -- it is a home/ symlink, and the generic sweep in
-# uninstall.sh already removes any link that points into this repo.
-#
-# permissions.allow/.deny: only the exact entries this module added are
-# subtracted, so anything added since -- by hand, or an "Always allow" click
-# in a session -- is left standing. Must match apply.sh's $allow/$deny.
+# Undo apply.sh's settings.json edits. Only this module's exact entries are
+# subtracted; anything added since is left standing. The script itself is a
+# home/ symlink and goes with the generic sweep.
 set -euo pipefail
 source "${DOT_ROOT:?}/lib/dot.sh"
 
 dest="$HOME/.claude/settings.json"
 script="$HOME/.claude/statusline.sh"
+# Must match apply.sh (tests/contract.bats).
 allow='["Bash(git status)","Bash(git diff*)","Bash(git log*)","Bash(git show*)","Bash(git branch*)","Bash(ls*)","Bash(pwd)"]'
 deny='["Bash(rm -rf *)","Bash(git push --force*)","Bash(git reset --hard*)","Bash(curl * | sh*)","Bash(curl * | bash*)","Read(~/.ssh/*)","Read(./.env)","Read(./.env.*)","Read(**/*.pem)","Read(**/id_rsa*)"]'
 

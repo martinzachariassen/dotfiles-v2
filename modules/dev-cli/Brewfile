@@ -1,17 +1,9 @@
-# Development tooling beyond the baseline in core/Brewfile.
-#
-# Mostly packages-only: this file, two lines of metadata, and a home/ leaf.
-# apply.sh exists for one thing -- mise ships a CLI here but the runtimes it
-# manages live in home/.config/mise/config.toml, and linking that file does
-# not install anything.
-#
-# Short on purpose. A tool earns a line here by being one you would install by
-# hand on a fresh machine within the first week; anything you reach for twice a
-# year is `brew install` when you need it, not a thing every machine carries.
+# Tools you would install by hand in the first week. Anything rarer is
+# `brew install` when needed.
 
-brew "gh"       # GitHub CLI
-brew "gitleaks" # secret scanning
-brew "jq"       # JSON on the command line
-brew "lazygit"  # git TUI
-brew "mise"     # language runtimes (brew owns CLIs, mise owns runtimes)
-brew "zoxide"   # smarter cd
+brew "gh"
+brew "gitleaks"
+brew "jq"
+brew "lazygit"
+brew "mise" # language runtimes (brew owns CLIs, mise owns runtimes)
+brew "zoxide"

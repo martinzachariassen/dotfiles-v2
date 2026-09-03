@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
 # Claude Code status line, two lines.
-#   Line 1 -- identity: model + effort · dir · session tag · git · session diff · PR
-#   Line 2 -- budget: context gauge | 5h/7d quota + reset countdown
+#   1: model + effort · dir · session tag · git · session diff · PR
+#   2: context gauge | 5h/7d quota + reset countdown
 #
-# ANSI-16 colors only, no hardcoded hex, so the bar follows whatever terminal
-# theme is active instead of fighting it. Icons are Nerd Font glyphs already
-# used by starship's prompt on the line above -- the branch icon here is the
-# same glyph modules/zsh/home/.config/starship.toml uses for git_branch, so it
-# means the same thing in both places.
+# ANSI-16 colours only, so the bar follows the terminal theme. Icons are Nerd
+# Font glyphs; the branch icon is the one starship.toml uses for git_branch.
 set -euo pipefail
 
 input="$(cat)"
@@ -19,14 +16,14 @@ SEP=" ${DIM}·${RESET} "
 DIVIDER=" ${DIM}|${RESET} "
 
 I_DIR=$''           # fa-folder
-I_BRANCH=$''        # pl-branch -- matches starship's git_branch symbol
+I_BRANCH=$''        # pl-branch
 I_TAG=$''           # fa-tag
-I_DIFF=$''          # oct-diff -- session edits, so +N stays unambiguous next to git's own +N
+I_DIFF=$''          # oct-diff -- keeps session +N distinct from git's +N
 I_PR=$''            # oct-git_pull_request
 I_OK=$''            # fa-check
 I_NO=$''            # fa-times
 I_CTX=$'\U000f035b' # md-memory
-I_RESET_ICO=$''     # fa-refresh -- rate-limit reset countdown
+I_RESET_ICO=$''     # fa-refresh
 
 # 1234 -> 1k, 1000000 -> 1.0M.
 fmt_tokens() {
@@ -40,8 +37,7 @@ fmt_tokens() {
   fi
 }
 
-# Countdown to a reset. Sub-minute collapses to "<1m" so it stops flickering
-# once it no longer changes any decision.
+# Sub-minute collapses to "<1m" so it stops flickering.
 fmt_eta() {
   local s=$1
   if ((s < 0)); then s=0; fi
@@ -60,8 +56,7 @@ fmt_eta() {
   fi
 }
 
-# Same 70/90 split as starship's own status coloring, so yellow means the same
-# amount of trouble everywhere in the terminal.
+# Same 70/90 split as starship, so yellow means the same thing everywhere.
 pct_color() {
   if (($1 >= 90)); then
     printf '%s' "$RED"
@@ -72,9 +67,6 @@ pct_color() {
   fi
 }
 
-# low/medium/high/xhigh/max -> lowercase, medium shortened. Plain lowercase
-# (not the original's uppercase) so it doesn't read as a mismatched font next
-# to the mixed-case model name beside it.
 effort_label() {
   case "$1" in
     medium) printf 'med' ;;
@@ -87,16 +79,14 @@ trunc() {
   if ((${#s} > max)); then printf '%s…' "${s:0:max-1}"; else printf '%s' "$s"; fi
 }
 
-# Wrap text in an OSC 8 hyperlink (Cmd/Ctrl-click in supporting terminals).
+# OSC 8 hyperlink.
 osc8() {
   local esc=$'\033' st=$'\033\\'
   printf '%s]8;;%s%s%s%s]8;;%s' "$esc" "$1" "$st" "$2" "$esc" "$st"
 }
 
-# One jq call: its startup cost dominates runtime, so every field comes out
-# of a single pass with \037 (a byte that cannot appear in the values) as the
-# join separator. Control characters are stripped since they'd otherwise
-# break that delimited read.
+# One jq call (its startup dominates runtime), joined on \037, which cannot
+# appear in the values once control characters are stripped.
 fields="$(jq -r '
     def clean: if . == null then "" else tostring | gsub("[[:cntrl:]]"; " ") end;
     def num: if . == null then 0 else . end;
@@ -117,7 +107,7 @@ fields="$(jq -r '
       (if .rate_limits.five_hour.resets_at then (.rate_limits.five_hour.resets_at - now | floor | tostring) else "" end),
       (if .rate_limits.seven_day then (.rate_limits.seven_day.used_percentage | num | floor | tostring) else "" end),
       (if .rate_limits.seven_day.resets_at then (.rate_limits.seven_day.resets_at - now | floor | tostring) else "" end)
-    ] | join("")' <<<"$input")"
+    ] | join("")' <<<"$input")"
 
 IFS=$'\037' read -r \
   MODEL DIR SESSION_ID SESSION_NAME EFFORT PCT USED_TOKENS CTX_SIZE \
@@ -127,7 +117,7 @@ IFS=$'\037' read -r \
 SESSION_ID=${SESSION_ID:-default}
 PCT=${PCT:-0} LINES_ADDED=${LINES_ADDED:-0} LINES_REMOVED=${LINES_REMOVED:-0} CTX_SIZE=${CTX_SIZE:-0}
 
-# ============================ line 1: identity ============================
+# --- line 1: identity -------------------------------------------------------
 LINE1="${CYAN}${BOLD}${MODEL}${RESET}"
 [[ -n $EFFORT ]] && LINE1+=" ${DIM}$(effort_label "$EFFORT")${RESET}"
 
@@ -141,8 +131,7 @@ if [[ -n $SESSION_NAME ]]; then
   LINE1+="${SEP}${DIM}${I_TAG}${RESET} ${DIM}${S}${RESET}"
 fi
 
-# Cached per session for a few seconds: the bar re-renders on every keystroke,
-# and `git status` is the slowest thing on this line in any repo of size.
+# Cached per session for a few seconds: the bar re-renders on every keystroke.
 if [[ -n $DIR ]] && git -C "$DIR" rev-parse --git-dir >/dev/null 2>&1; then
   cache="${TMPDIR:-/tmp}/claude-statusline-git-${SESSION_ID}"
   age=999
@@ -183,8 +172,6 @@ if [[ -n $DIR ]] && git -C "$DIR" rev-parse --git-dir >/dev/null 2>&1; then
   fi
 fi
 
-# Session edits carry their own icon: without it, "+120" sits next to git's
-# own "+3" meaning something entirely different.
 if ((LINES_ADDED > 0 || LINES_REMOVED > 0)); then
   LINE1+="${SEP}${DIM}${I_DIFF}${RESET} ${GREEN}+${LINES_ADDED}${RESET}${DIM}/${RESET}${RED}-${LINES_REMOVED}${RESET}"
 fi
@@ -200,7 +187,7 @@ if [[ -n $PR_NUMBER ]]; then
   LINE1+="${SEP}${PR_TEXT}"
 fi
 
-# ============================ line 2: budget ============================
+# --- line 2: budget ---------------------------------------------------------
 BAR_WIDTH=14
 FILLED=$((PCT * BAR_WIDTH / 100))
 ((FILLED > BAR_WIDTH)) && FILLED=$BAR_WIDTH
@@ -216,9 +203,6 @@ if ((CTX_SIZE > 0)); then
   LINE2+="${SEP}${DIM}${T}${RESET}"
 fi
 
-# Quota percentage answers "how much is left"; the countdown answers "for how
-# long" -- the colon ties the window label tight to its value, the same way
-# "+84/-12" and "84k/200k" stay tight elsewhere on the bar.
 QUOTA=""
 if [[ -n $FIVE_H ]]; then
   QUOTA="5h${DIM}:${RESET}$(pct_color "$FIVE_H")${FIVE_H}%${RESET}"

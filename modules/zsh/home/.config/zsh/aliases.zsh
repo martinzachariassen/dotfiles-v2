@@ -1,5 +1,4 @@
-# Aliases. Every replacement here is a package in this module's Brewfile or in
-# core/Brewfile -- if you remove the package, remove the alias.
+# Every replacement here is a package in this module's Brewfile.
 
 alias ls='eza --group-directories-first'
 alias ll='eza -l --group-directories-first --git'
@@ -16,6 +15,5 @@ alias gl='git log --oneline --graph --decorate -20'
 alias ..='cd ..'
 alias ...='cd ../..'
 
-# Reapply the dotfiles after pulling. The path is install.sh's default; if you
-# cloned elsewhere (DOTFILES_DIR), this is the one line that needs editing.
+# install.sh's default checkout path; edit if you cloned elsewhere.
 alias dotup='git -C "$HOME/Developer/personal/dotfiles-v2" pull --ff-only && dot apply'

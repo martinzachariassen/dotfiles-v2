@@ -1,15 +1,9 @@
 #!/usr/bin/env bash
 #
-# `dot` -- the dotfiles CLI.
-#
-# Usage:
-#   dot <command> [options]
-#
+# `dot` -- the dotfiles CLI. Three verbs, hardcoded; removal is uninstall.sh.
 
-# `#!/usr/bin/env bash` picks whichever bash comes first on PATH, and macOS
-# ships 3.2 (from 2007) as /bin/bash -- so a shell that has not sourced
-# Homebrew's shellenv would start this under 3.2 and hit obscure syntax errors
-# deep inside the library. Re-exec into the right one instead of failing later.
+# macOS ships bash 3.2 as /bin/bash; a shell that never sourced Homebrew's
+# shellenv would start this under it.
 if ((BASH_VERSINFO[0] < 5)); then
   if [[ -x /opt/homebrew/bin/bash ]]; then
     exec /opt/homebrew/bin/bash "$0" "$@"
@@ -23,9 +17,7 @@ set -euo pipefail
 # shellcheck source=../lib/dot.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/dot.sh"
 
-# This is the top level, not somebody's hook. Warnings get reported in the
-# Result line and stop there: `dot doctor && ...` must not break because a
-# link is orphaned or the repo has uncommitted work. See lib/ui.sh.
+# Top level, not a hook: `dot doctor && ...` must survive an orphaned link.
 __DOT_EXIT_WARN=0
 
 usage() {
@@ -39,9 +31,6 @@ usage: dot <command> [options]
   doctor    Check this machine. Read-only; never changes anything.
 
 EOF
-  # Printed, not baked into the quoted heredoc above: both paths are
-  # overridable, and a usage line naming the wrong file is worse than one
-  # naming no file at all.
   printf 'Config:  %s\n' "${DOT_CONFIG/#$HOME/\~}"
   printf 'Repo:    %s\n' "${DOT_ROOT/#$HOME/\~}"
   printf 'Remove:  bash uninstall.sh --dry-run   (in the repo; not a verb, on purpose)\n'
@@ -49,9 +38,7 @@ EOF
 
 # --- apply -----------------------------------------------------------------
 cmd_apply() {
-  # Every option is matched exactly and anything else is fatal. The previous
-  # version tested only for --dry-run and ignored the rest, so `dot apply --dry`
-  # -- a plausible typo -- silently applied for real.
+  # Anything unknown is fatal: `dot apply --dry` must not apply for real.
   while (($#)); do
     case $1 in
       --dry-run) export DOT_DRY_RUN=1 ;;
@@ -60,38 +47,18 @@ cmd_apply() {
     shift
   done
 
-  # --- Transcript ---
-  #
-  # A first install prints thousands of lines of Homebrew output and kept no
-  # record of any of it, so the one thing worth reading scrolled away. Written
-  # here rather than at the top of this file, and that is not tidiness:
-  #
-  #   - `dot config` must print NOTHING but the editor's own output, and
-  #   - no doctor hook may write inside $HOME (tests/contract.bats snapshots it).
-  #
-  # Both are asserted, so a redirect covering all three verbs fails the suite.
-  #
-  # 2>&1 merges stderr deliberately: a transcript missing every warn and fail is
-  # not a transcript. The cost is that `dot apply 2>/dev/null` no longer filters.
-  #
-  # No `wait` for the tee. It write()s each chunk straight through, so the FILE
-  # is complete at every instant; what can race the shell prompt is only tee's
-  # last write to the terminal. Waiting would mean closing stdout in the EXIT
-  # trap first, trading a cosmetic race for a possible hang.
+  # Transcript. Here and not at the top of the file: `dot config` must print
+  # only the editor's output, and no doctor hook may write inside $HOME. Never
+  # under --dry-run. uninstall.sh removes logs/ and must keep agreeing it is
+  # ours. 2>&1 on purpose: a transcript without the warnings is not one.
   local log=''
   if [[ $DOT_DRY_RUN != 1 ]]; then
     log="$DOT_STATE/logs/$DOT_RUN_ID.log"
     mkdir -p "$DOT_STATE/logs"
 
-    # Pruned here, where the directory is created, so a state directory that
-    # only grows is never a thing anyone has to notice later. Sorted by NAME
-    # rather than by mtime: DOT_RUN_ID is a fixed-width timestamp, so the two
-    # orders agree, and lexical order needs no `ls` to produce.
-    #
-    # `touch` first, and BEFORE the tee. tee creates the file too, but it is
-    # started asynchronously -- so the count below raced it and kept 21 logs
-    # whenever the redirect had not landed yet. Creating it here means this run
-    # is one of the twenty by construction, whatever the scheduler does.
+    # touch BEFORE the tee, so this run is one of the twenty by construction
+    # rather than racing the async redirect. Sorted by name: DOT_RUN_ID is a
+    # fixed-width timestamp.
     local old
     touch "$log"
     while IFS= read -r old; do
@@ -107,26 +74,17 @@ cmd_apply() {
   if [[ -n $log ]]; then dim "log     ${log/#$HOME/\~}"; fi
   if [[ $DOT_DRY_RUN == 1 ]]; then dim 'dry run -- nothing will be changed'; fi
 
-  # Phase 1. Installs dasel and fzf, which everything below depends on, so
-  # nothing may run before it.
+  # Phase 1 installs dasel and fzf; nothing below may run before it.
   heading 'Core packages'
   if ! brew_load; then
     die 'Homebrew is not installed. Run install.sh first.'
   fi
-  # Fatal, and explicitly so. Called bare, brew_bundle's `return 1` tripped
-  # `set -e` and the ERR trap reported "lib/brew.sh:44: return 1" -- naming the
-  # library instead of the one thing worth knowing.
   brew_bundle "$DOT_ROOT/core/Brewfile" core ||
     die 'Core packages did not install. Fix the brew errors above, then re-run.'
 
-  # Config. Generated on first run, read silently ever after -- a tool that
-  # re-asks a settled question feels broken.
   if ! cfg_exists; then
-    # Not under --dry-run. config_generate declines to write in a dry run, so
-    # the wizard would ask five questions and discard every answer -- a preview
-    # of a run that cannot happen. And on a machine that has never applied, the
-    # fzf check below would then die pointing at "the brew output above" from a
-    # phase 1 that was deliberately skipped.
+    # Not under --dry-run: config_generate would not write, so the wizard
+    # would ask and discard.
     if [[ $DOT_DRY_RUN == 1 ]]; then
       die "No config at $DOT_CONFIG yet. Create it first: dot config --init"
     fi
@@ -137,54 +95,35 @@ cmd_apply() {
     wizard_run
   fi
 
-  # Before anything is touched, and in this order: a config dasel gave up on
-  # halfway through has no `enabled` key at all, so modules_require_known finds
-  # no unknown names and waves it through -- then apply reports "None enabled."
-  # and exits 0 over a machine it did nothing to. Refuse instead; the file is
-  # not saying what its author thinks it says.
+  # Parse check first: a truncated config has no `enabled` key at all, so
+  # modules_require_known would wave it through and apply would do nothing.
   local problems
   problems=$(cfg_parse_problems)
   [[ -z $problems ]] || die "$DOT_CONFIG did not parse:
     $problems
     edit:       $DOT_CONFIG"
 
-  # Validated here, once, before anything is touched. modules_enabled cannot
-  # report this itself: every caller reads it as `< <(modules_enabled)`, and
-  # each of those subshells printed its own copy of the complaint.
+  # Once, here: modules_enabled is read in subshells and cannot report this.
   modules_require_known
 
   heading 'Core files'
   fs_link_tree "$DOT_ROOT/core"
-  # Folded rather than bare: bare, a warning from core would have exited 2 and
-  # `set -e` would have killed the apply before a single module ran.
   fold_status 'core apply.sh failed' "$BASH" "$DOT_ROOT/core/apply.sh"
 
-  # Read into an array first, so "how many were there" is the array's length
-  # rather than a counter maintained by hand alongside the loop.
   local name i=0
   local -a names
   mapfile -t names < <(modules_enabled)
 
-  # The list up front, where the loop starts -- the honest place for it, since
-  # phase 1 has already run by the time the config can be read at all. `none`
-  # enabled is the zero case of this same block rather than its own branch
-  # further down: it is the expected state after choosing the `none` profile,
-  # and it needs to say what to do next.
   heading 'Modules'
   if ((${#names[@]} == 0)); then
     say "None enabled. List them under [modules] in $DOT_CONFIG."
   else
-    # printf, not IFS + "${names[*]}": that form joins on only the FIRST
-    # character of IFS, so ", " gives "apps,containers". Same fix as fs_report.
     local list
     list=$(printf ', %s' "${names[@]}")
     say "${#names[@]} enabled: ${list:2}"
   fi
 
   for name in "${names[@]}"; do
-    # [n/N] so a long first install says how much of it is left. The
-    # description is module.toml's one field, which until now only the wizard
-    # ever showed -- the heading names a module, this says what it is for.
     i=$((i + 1))
     heading "Module: $name  [$i/${#names[@]}]"
     dim "$(module_desc "$name")"
@@ -194,10 +133,6 @@ cmd_apply() {
   heading 'Summary'
   if ((${#names[@]} > 0)); then say "${#names[@]} modules"; fi
   fs_report
-  # The same three-way close as `dot doctor`'s Result, for the same reason: a
-  # bare list of counts under a run that printed warnings reads as success.
-  # `fail`/`warn` re-bump a tally that is already non-zero, which is harmless
-  # and keeps the glyph consistent with every other line.
   if ((DOT_FAILURES > 0)); then
     fail 'Finished with problems -- see the ✗ marks above.'
   elif ((DOT_WARNINGS > 0)); then
@@ -224,11 +159,7 @@ cmd_config() {
   esac
 
   cfg_exists || die "No config yet. Create it with: dot config --init"
-  # Unquoted, deliberately. $EDITOR conventionally carries arguments -- ours is
-  # `code --wait` -- and quoted, bash looks for a binary named "code --wait"
-  # and reports "command not found" for a thing that is plainly installed.
-  # Splitting on whitespace is what every other $EDITOR consumer does; an
-  # editor whose PATH has spaces in it needs a wrapper script, not a rule here.
+  # Unquoted: $EDITOR carries arguments (`code --wait`).
   # shellcheck disable=SC2086
   ${EDITOR:-vi} "$DOT_CONFIG"
 }
@@ -238,8 +169,7 @@ cmd_doctor() {
   cfg_exists || die "No config at $DOT_CONFIG. Run: dot config --init"
 
   heading 'Core'
-  # `fail`, not `warn`: this is exactly what will stop the next `dot apply`,
-  # and doctor exists to predict that rather than to shrug at it.
+  # `fail`: this is exactly what will stop the next apply.
   local unknown
   while IFS= read -r unknown; do
     fail "config lists unknown module '$unknown' -- dot apply will refuse"
@@ -248,12 +178,6 @@ cmd_doctor() {
   fold_status 'core checks failed' "$BASH" "$DOT_ROOT/core/doctor.sh"
   fs_check_tree "$DOT_ROOT/core" || fail 'core files are not linked -- run: dot apply'
 
-  # module_doctor tallies its own failures; both of these were `|| true` once.
-  #
-  # Read into an array rather than streamed, for the same reason apply does it:
-  # [n/N] needs the total before the first heading is printed. The two verbs
-  # print the same heading, and someone comparing a doctor run against the apply
-  # that preceded it should not have to notice which one they are looking at.
   local name i=0
   local -a names
   mapfile -t names < <(modules_enabled)
@@ -264,9 +188,7 @@ cmd_doctor() {
     module_doctor "$name"
   done
 
-  # Links into the repo that no enabled module claims -- left behind by
-  # disabling a module or deleting a file. Reported, never deleted: the repo
-  # does not get to remove things from your home directory on its own.
+  # Reported, never deleted: doctor does not remove things from $HOME.
   heading 'Orphaned links'
   local orphan found=0
   while IFS= read -r orphan; do
@@ -279,17 +201,12 @@ cmd_doctor() {
     ok 'none'
   fi
 
+  # Three branches; a summary may not contradict the lines above it. No count:
+  # a hook's three problems arrive as one rolled-up failure.
   heading 'Result'
   if ((DOT_FAILURES > 0)); then
-    # Deliberately not a count. DOT_FAILURES tallies the ✗ lines THIS process
-    # printed, and a hook that found three problems arrives as one rolled-up
-    # failure -- so "3 problem(s) found" sat underneath five ✗ marks and left
-    # you to work out which three. Both branches point rather than count.
     fail 'Problems found -- see the ✗ marks above.'
   elif ((DOT_WARNINGS > 0)); then
-    # Neither `ok` nor `fail`. Nothing here will stop the next apply and the
-    # exit status stays 0 -- but this line used to read "Everything looks
-    # right" directly under a list of orphaned links and a stopped colima.
     warn 'No problems found. There are warnings above worth a look.'
   else
     ok 'Everything looks right.'

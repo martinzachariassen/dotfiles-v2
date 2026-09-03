@@ -1,25 +1,14 @@
-# Core packages -- phase 1, always installed, never optional.
-#
-# The ordering constraint that shapes this whole repo lives here: dasel and
-# fzf are installed by this file, and everything after phase 1 depends on
-# them. Nothing that runs before `brew bundle --file core/Brewfile` may use a
-# tool listed in it.
-#
-# Keep this list short. A package belongs here only if the dotfiles machinery
-# itself needs it, or if you would be annoyed to find it missing on any
-# machine. Everything else belongs to a module.
+# Phase 1: always installed. Nothing that runs before this file may use a tool
+# listed in it. Only what the machinery needs, or what every machine must have.
 
-# --- Required by the dotfiles machinery -------------------------------------
-# bash is the one package install.sh also installs directly, before phase 1:
-# every script here needs bash 5 and macOS ships 3.2, so `dot` cannot run at
-# all until it exists. It is listed anyway so `brew bundle` keeps it upgraded
-# and `brew bundle cleanup` never proposes removing it.
-brew "bash"      # 5.x; macOS ships 3.2 from 2007
-brew "dasel"     # reads config.toml and every module.toml
-brew "fzf"       # the first-run module picker
-brew "git"       # cloning and updating this repo
+# bash: one of four places that must agree on bash 5 (install.sh, bin/dot,
+# lib/dot.sh). Listed so `brew bundle cleanup` never proposes removing it.
+brew "bash"
+brew "dasel" # reads config.toml and every module.toml
+brew "fzf"   # the first-run module picker
+brew "git"
 
-# --- Quality gates (pre-commit and CI run the same binaries) ----------------
-brew "bats-core"  # test runner
-brew "shellcheck" # shell linter
-brew "shfmt"      # shell formatter
+# Quality gates -- pre-commit and CI run the same binaries.
+brew "bats-core"
+brew "shellcheck"
+brew "shfmt"

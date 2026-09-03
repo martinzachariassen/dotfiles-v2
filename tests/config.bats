@@ -1,9 +1,7 @@
 #!/usr/bin/env bats
 #
-# Config reading, and the one generator.
-#
-# Several of these pin down dasel v3 behaviour that is genuinely surprising --
-# if a future dasel changes it, these tests are how you find out.
+# Config reading, and the one generator. Several pin surprising dasel v3
+# behaviour; a future dasel changing it shows up here.
 
 load helper
 
@@ -47,15 +45,13 @@ teardown() { teardown_sandbox; }
 }
 
 @test "get: a value containing a colon survives the YAML round trip" {
-  # Everything is read as YAML, and YAML would read `x: y` as a mapping -- so
-  # dasel single-quotes it. __cfg_unquote has to take those quotes back off.
+  # YAML would read `x: y` as a mapping, so dasel single-quotes it.
   printf 'note = "time: 10:30"\n' >"$DOT_CONFIG"
   run cfg_get 'note'
   [ "$output" = "time: 10:30" ]
 }
 
 @test "get: an empty string reads back as empty, not as two quote marks" {
-  # The other value YAML cannot render bare: it comes back as the literal "".
   printf 'note = ""\n' >"$DOT_CONFIG"
   run cfg_get 'note' 'fallback'
   [ "$output" = "" ]
@@ -75,8 +71,7 @@ teardown() { teardown_sandbox; }
 }
 
 @test "setting: reads a dashed module name via bracket syntax" {
-  # dasel parses settings.macos-defaults.x as a subtraction. If this test
-  # fails, module_setting stopped escaping and every dashed module broke.
+  # dasel parses settings.macos-defaults.x as a subtraction.
   run module_setting macos-defaults dock_tilesize
   [ "$output" = "64" ]
 }
@@ -94,16 +89,10 @@ teardown() { teardown_sandbox; }
 }
 
 # --- a config that does not parse whole --------------------------------------
-#
-# dasel does not validate: it stops at the first malformed line, keeps what it
-# read, and exits 0. The old check asked it for `schema`, which the generator
-# writes above everything a user edits, so it passed on every truncated config.
-# These pin the detector -- and dasel's behaviour, which is what makes the
-# detector necessary in the first place.
+# dasel stops at the first malformed line, keeps what it read, and exits 0.
 
 @test "parse: dasel really does truncate silently -- rc 0, half a document" {
-  # If a future dasel starts rejecting this outright, cfg_parse_problems is
-  # dead weight and this test is where you find out.
+  # If a future dasel rejects this outright, cfg_parse_problems is dead weight.
   printf 'schema = 1\n[modules]\nenabled = [ "git" "zsh" ]\n' >"$DOT_CONFIG"
   run dasel -i toml -o yaml 'schema' <"$DOT_CONFIG"
   [ "$status" -eq 0 ]
@@ -117,12 +106,10 @@ teardown() { teardown_sandbox; }
 }
 
 @test "parse: a missing comma in enabled is caught, not waved through" {
-  # The end-to-end scenario. Everything below the typo vanishes, so the config
-  # names no modules -- and every link in $HOME is then unclaimed by definition.
   printf 'schema = 1\n[modules]\nenabled = [ "git" "zsh" ]\n\n[settings.git]\nsigningkey = "k"\n' \
     >"$DOT_CONFIG"
 
-  # The trap: nothing else in the engine objects to this file.
+  # Nothing else in the engine objects to this file.
   run modules_require_known
   [ "$status" -eq 0 ]
   run cfg_list 'modules.enabled'
@@ -134,9 +121,7 @@ teardown() { teardown_sandbox; }
 }
 
 @test "parse: an empty enabled list is valid, not a parse failure" {
-  # The `none` profile writes exactly this, and confusing it with a truncated
-  # config would make the detector fire on a supported configuration -- which
-  # is the failure mode that gets a check deleted.
+  # The `none` profile writes exactly this.
   rm "$DOT_CONFIG"
   config_generate "A" "a@b.c" ""
 
@@ -145,8 +130,7 @@ teardown() { teardown_sandbox; }
 }
 
 @test "parse: a [modules] table whose enabled key was eaten is caught" {
-  # The narrow case the table check cannot see on its own: [modules] itself
-  # parsed, so it is present in keys(); only the list below it was lost.
+  # [modules] itself parsed and is in keys(); only the list below it was lost.
   printf 'schema = 1\n[modules]\nenabled = [ "git"\n' >"$DOT_CONFIG"
   run cfg_parse_problems
   [ "$status" -eq 0 ]
@@ -154,9 +138,6 @@ teardown() { teardown_sandbox; }
 }
 
 @test "parse: a dropped table is reported once, by name, with the cause" {
-  # Not twice: [settings] going missing must not also trip the enabled check.
-  # And the message has to name the table, because "does not parse" over a
-  # 40-line file is a message you cannot act on.
   printf 'schema = 1\n[modules]\nenabled = ["git"]\nstray line\n\n[settings.git]\nk = "v"\n' \
     >"$DOT_CONFIG"
   run cfg_parse_problems
@@ -171,14 +152,10 @@ teardown() { teardown_sandbox; }
   run "$DOT_ROOT/bin/dot" apply --dry-run
   [ "$status" -ne 0 ]
   [[ $output == *"did not parse"* ]]
-  # It stopped before deciding the machine needed nothing done to it.
   [[ $output != *"None enabled"* ]]
 }
 
 @test "parse: doctor reports it and does not tell you to delete your dotfiles" {
-  # The worst consequence, asserted directly. With no enabled modules every
-  # link into the repo is an orphan, so doctor listed a working setup under
-  # "unclaimed" and closed with `Remove with: rm <path>`.
   printf 'schema = 1\n[modules]\nenabled = [ "git" "zsh" ]\n\n[settings.git]\nk = "v"\n' \
     >"$DOT_CONFIG"
 
@@ -192,7 +169,6 @@ teardown() { teardown_sandbox; }
 @test "generate: refuses to overwrite an existing config" {
   run config_generate "A" "a@b.c" "git"
   [ "$status" -ne 0 ]
-  # the original survives untouched
   run cfg_get 'user.name'
   [ "$output" = "Martin Zachariassen" ]
 }
@@ -210,7 +186,6 @@ teardown() { teardown_sandbox; }
 }
 
 @test "generate: the result keeps its comments" {
-  # The entire reason the tool writes only once.
   rm "$DOT_CONFIG"
   config_generate "A" "a@b.c" "git"
   run grep -c '^#' "$DOT_CONFIG"
@@ -218,17 +193,13 @@ teardown() { teardown_sandbox; }
 }
 
 @test "generate: a quote in the git identity does not truncate the config" {
-  # No typo required: the wizard offers `git config user.name` as the default,
-  # and `Martin "Zach" Z` is a name people have. Written raw it closed the TOML
-  # string early, dasel stopped there, and the [modules] table BELOW it was
-  # gone from the parsed document -- a first run that enables nothing, from a
-  # config the tool wrote itself.
+  # Written raw, the quote closes the TOML string early and every table below
+  # it vanishes from the parsed document.
   rm "$DOT_CONFIG"
   config_generate 'Martin "Zach" Z' 'a@b.c' "$(printf 'git\n')"
 
   run cfg_get 'user.name'
   [ "$output" = 'Martin "Zach" Z' ]
-  # The half that vanished.
   run cfg_list 'modules.enabled'
   [ "$output" = "git" ]
   run cfg_parse_problems
@@ -236,8 +207,7 @@ teardown() { teardown_sandbox; }
 }
 
 @test "generate: a backslash survives too, and does not eat the next character" {
-  # Backslash has to be escaped BEFORE the quote, or the escape added for a
-  # quote gets escaped in turn and the value silently changes shape.
+  # Backslash must be escaped BEFORE the quote in __cfg_quote.
   rm "$DOT_CONFIG"
   config_generate 'back\slash and "quote"' 'a@b.c' ""
 

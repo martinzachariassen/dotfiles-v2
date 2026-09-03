@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 #
-# There is nothing to undo here, and saying so out loud is the whole job.
-# apply.sh never read the old values, so they exist nowhere. `defaults delete`
-# would not restore them either: it drops the key and macOS falls back to a
-# factory value, a different thing from what you had. Doing it properly needs a
-# state file, which this repo does not have on purpose.
+# Nothing to undo: apply.sh never read the old values, and `defaults delete`
+# would give Apple's factory setting, not what you had. Reversing this needs a
+# state file, a trade this repo has not made.
 
 set -euo pipefail
 source "${DOT_ROOT:?}/lib/dot.sh"

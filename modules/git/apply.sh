@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 #
-# Generate ~/.config/git/config.local from the user config.
-#
-# The shape every "templated" file in this repo should take: read a few values,
-# printf them into a real file that the tool's own include mechanism picks up.
-# No template engine, no .tmpl extension, no rendering pass. A generator that
-# needs a conditional wants it in git's config language instead.
+# Generate ~/.config/git/config.local: a few values printf'd into a file git's
+# own include mechanism reads. No template engine. A conditional belongs in
+# git's config language, not here.
 
 set -euo pipefail
 source "${DOT_ROOT:?}/lib/dot.sh"
@@ -16,20 +13,15 @@ signingkey=$(module_setting git signingkey '')
 
 dest="$HOME/.config/git/config.local"
 
-# THE SSH MODULE DOES NOT COVER SIGNING, however much it looks like it should.
-# With gpg.format=ssh git shells out to gpg.ssh.program, which defaults to
-# `ssh-keygen -Y sign` -- and ssh-keygen does not read ~/.ssh/config. The
-# IdentityAgent line modules/ssh ships is an ssh(1) option and invisible here;
-# ssh-keygen only ever talks to $SSH_AUTH_SOCK, which on macOS is the launchd
-# agent and holds none of the vault's keys.
-#
-# So the two halves failed apart: `git push` worked, ssh/doctor.sh reported the
-# socket live, and every `git commit` died on `No private key found`. Only
-# 1Password's own signer reaches the vault, and only if it is named here.
-#
-# Overridable because the real path is inside an .app bundle: the tests have to
-# exercise both branches on a machine that has never seen 1Password.
+# The ssh module does NOT cover signing: git shells out to gpg.ssh.program,
+# which defaults to `ssh-keygen -Y sign`, and ssh-keygen never reads
+# ~/.ssh/config. Only 1Password's own signer reaches the vault.
 opsign=${DOT_OP_SSH_SIGN:-/Applications/1Password.app/Contents/MacOS/op-ssh-sign}
+
+# Absolute, because git run from a GUI inherits no shell PATH. Only written
+# when VS Code is installed (the apps module), or every commit would fail on a
+# missing editor.
+code=${DOT_CODE_BIN:-/opt/homebrew/bin/code}
 
 if [[ -z $name || -z $email ]]; then
   warn 'user.name or user.email is empty in config.toml -- skipping config.local'
@@ -41,15 +33,9 @@ if [[ $DOT_DRY_RUN == 1 ]]; then
   exit 0
 fi
 
-# Decided out here, not inside the generator below, because `warn` goes to
-# stderr but `dim` and `info` go to STDOUT -- and stdout down there is
-# config.local. An advisory line written in the wrong place is a git config
-# syntax error in a file nobody opens.
-#
-# All three keys or none of them: `gpgsign = true` with no reachable signer
-# does not produce unsigned commits, it produces NO commits -- git aborts. On a
-# fresh machine the apps cask may not have landed by the time this hook runs,
-# so the recoverable half of that choice is to leave signing off and say so.
+# Decided out here: `warn` goes to stderr, but inside the generator below
+# stdout IS config.local. All three signing keys or none: `gpgsign = true`
+# with no reachable signer aborts every commit.
 sign=0
 if [[ -n $signingkey ]]; then
   if [[ -x $opsign ]]; then
@@ -59,10 +45,8 @@ if [[ -n $signingkey ]]; then
   fi
 fi
 
-# Quoted, because git's config language is not "the rest of the line". A `#`
-# or `;` starts a comment, so `name = Martin # 1` reads back as `Martin`, and a
-# bare `"` is stripped -- both silently, both producing a plausible-looking
-# name that is not yours. Inside quotes only `"` and `\` need escaping.
+# git's config language: `#` and `;` start a comment and a bare `"` is
+# stripped, silently. Inside quotes only `"` and `\` need escaping.
 q() {
   local v=$1
   v=${v//\\/\\\\}
@@ -80,6 +64,9 @@ mkdir -p "$(dirname "$dest")"
     printf '[gpg]\n\tformat = ssh\n\n'
     printf '[gpg "ssh"]\n\tprogram = %s\n\n' "$(q "$opsign")"
     printf '[commit]\n\tgpgsign = true\n'
+  fi
+  if [[ -x $code ]]; then
+    printf '\n[core]\n\teditor = %s\n' "$(q "$code --wait")"
   fi
 } >"$dest"
 
