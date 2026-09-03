@@ -133,6 +133,7 @@ and takes its Brewfile line with it.
 |---|---|
 | `dev-cli` | tools that are not baseline: gitleaks, lazygit, mise, zoxide |
 | `apps` | GUI casks and fonts: 1Password, Raycast, VS Code, … |
+| `work-apps` | what an employer's machine needs: Intune, Office, Teams, Slack |
 
 The split is descriptive, not enforced -- there is no flag and no second
 registry, because the shapes are the same to the driver and only differ to the
