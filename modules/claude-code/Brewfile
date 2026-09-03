@@ -12,5 +12,5 @@
 # a fresh machine. `brew bundle` is idempotent; a repeated line is cheaper than
 # an ordering rule the driver has no way to express.
 
-cask "claude-code" # the CLI itself
+cask "claude-code@latest" # the CLI itself
 brew "jq"          # home/.claude/statusline.sh parses its stdin with it
