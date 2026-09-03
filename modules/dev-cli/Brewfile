@@ -3,7 +3,8 @@
 
 brew "gh"
 brew "gitleaks"
+cask "gcloud-cli"
 brew "jq"
 brew "lazygit"
-brew "mise" # language runtimes (brew owns CLIs, mise owns runtimes)
+brew "mise"         # language runtimes (brew owns CLIs, mise owns runtimes)
 brew "zoxide"
