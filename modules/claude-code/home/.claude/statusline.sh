@@ -86,7 +86,9 @@ osc8() {
 }
 
 # One jq call (its startup dominates runtime), joined on \037, which cannot
-# appear in the values once control characters are stripped.
+# appear in the values once control characters are stripped. Written as the jq
+# escape \u001f, never a literal byte: editors and formatters silently drop it,
+# and the whole record then lands in MODEL. The IFS below must stay in sync.
 fields="$(jq -r '
     def clean: if . == null then "" else tostring | gsub("[[:cntrl:]]"; " ") end;
     def num: if . == null then 0 else . end;
@@ -107,7 +109,7 @@ fields="$(jq -r '
       (if .rate_limits.five_hour.resets_at then (.rate_limits.five_hour.resets_at - now | floor | tostring) else "" end),
       (if .rate_limits.seven_day then (.rate_limits.seven_day.used_percentage | num | floor | tostring) else "" end),
       (if .rate_limits.seven_day.resets_at then (.rate_limits.seven_day.resets_at - now | floor | tostring) else "" end)
-    ] | join("")' <<<"$input")"
+    ] | join("\u001f")' <<<"$input")"
 
 IFS=$'\037' read -r \
   MODEL DIR SESSION_ID SESSION_NAME EFFORT PCT USED_TOKENS CTX_SIZE \
