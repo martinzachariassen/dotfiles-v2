@@ -13,6 +13,10 @@
 # auto mode escalates each one to the user -- and it still misses the same file
 # outside cwd, and any subprocess that opens it directly. Wildcard secrets
 # belong in sandbox.filesystem.denyRead, which the OS enforces.
+#
+# spinnerTipsEnabled uses //=, not =: unlike statusLine there is no unique
+# value that proves the module set it, so remove.sh leaves it alone and apply.sh
+# only sets the default once -- a user who re-enables tips stays re-enabled.
 set -euo pipefail
 source "${DOT_ROOT:?}/lib/dot.sh"
 
@@ -22,7 +26,7 @@ allow='["Bash(git status)","Bash(git diff*)","Bash(git log*)","Bash(git show*)",
 deny='["Bash(rm -rf *)","Bash(git push --force*)","Bash(git reset --hard*)","Bash(curl * | sh*)","Bash(curl * | bash*)","Read(~/.ssh/**)","Read(~/.aws/**)","Read(~/.gnupg/**)","Read(~/.config/gh/**)","Read(./.env)","Read(./.env.*)"]'
 
 if [[ $DOT_DRY_RUN == 1 ]]; then
-  info "write   ~/.claude/settings.json (.statusLine, .permissions)"
+  info "write   ~/.claude/settings.json (.statusLine, .permissions, .spinnerTipsEnabled)"
   exit 0
 fi
 
@@ -35,6 +39,7 @@ jq --arg cmd "$script" --argjson allow "$allow" --argjson deny "$deny" '
   | .permissions.defaultMode //= "default"
   | .permissions.allow = ((.permissions.allow // []) + $allow | unique)
   | .permissions.deny  = ((.permissions.deny  // []) + $deny  | unique)
+  | .spinnerTipsEnabled //= false
 ' "$dest" >"$tmp" && mv "$tmp" "$dest"
 
-ok "Claude Code status line wired to $script, permissions floor applied"
+ok "Claude Code status line wired to $script, permissions floor applied, tips disabled"
