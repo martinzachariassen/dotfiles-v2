@@ -36,7 +36,7 @@ mkdir -p "$(dirname "$dest")"
 tmp="$(mktemp "${dest}.XXXXXX")"
 jq --arg cmd "$script" --argjson allow "$allow" --argjson deny "$deny" '
   .statusLine = {type: "command", command: $cmd, padding: 0}
-  | .permissions.defaultMode //= "default"
+  | .permissions.defaultMode //= "auto"
   | .permissions.allow = ((.permissions.allow // []) + $allow | unique)
   | .permissions.deny  = ((.permissions.deny  // []) + $deny  | unique)
   | .spinnerTipsEnabled //= false
